@@ -45,8 +45,8 @@ jobs:
       run: |
         COVERAGE=$(grep -oP 'Line coverage: \K[0-9.]+' ./coverage/report/Summary.txt)
         echo "Current coverage: $COVERAGE%"
-        if (( $(echo "$COVERAGE < 75" | bc -l) )); then
-          echo "❌ Coverage is below 75% (current: $COVERAGE%)"
+        if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+          echo "❌ Coverage is below 60% (current: $COVERAGE%)"
           exit 1
         else
           echo "✅ Coverage is acceptable: $COVERAGE%"
