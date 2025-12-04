@@ -83,8 +83,8 @@ public class TerminalExecutorTests
     public async Task ExecuteAsync_SimpleEchoCommand_ShouldReturnOutput()
     {
         var executor = new TerminalExecutor();
-        var command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
-            ? "echo test" 
+        var command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? "echo test"
             : "echo test";
 
         var result = await executor.ExecuteAsync(command);
@@ -162,9 +162,9 @@ public class TerminalExecutorTests
     {
         var executor = new TerminalExecutor();
         var tempPath = Path.GetTempPath();
-        
+
         await executor.ExecuteAsync($"cd {tempPath}");
-        
+
         var testDir = Path.Combine(tempPath, "test_dir_" + Guid.NewGuid().ToString());
         Directory.CreateDirectory(testDir);
 
@@ -225,7 +225,7 @@ public class TerminalExecutorTests
     public async Task ExecuteAsync_CdWithSpaces_ShouldHandleProperly()
     {
         var executor = new TerminalExecutor();
-        
+
         var result = await executor.ExecuteAsync("cd   ");
 
         Assert.Equal(0, result.ExitCode);
