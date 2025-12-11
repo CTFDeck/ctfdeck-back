@@ -221,7 +221,7 @@ public class WebSocketServer
         }
         catch (OperationCanceledException)
         {
-            
+            // Expected when shutting down
         }
         catch (Exception ex)
         {
