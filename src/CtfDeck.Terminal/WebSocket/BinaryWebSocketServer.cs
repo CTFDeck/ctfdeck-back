@@ -1,0 +1,290 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.WebSockets;
+using System.Text;
+using WsClient = System.Net.WebSockets.WebSocket;
+
+namespace CtfDeck.Terminal.WebSocket;
+
+public class WebSocketServer
+{
+    private readonly HttpListener _httpListener;
+    private readonly CancellationTokenSource _cancellationTokenSource;
+    private readonly ConcurrentDictionary<string, WsClient> _connectedClients;
+    private bool _isRunning;
+    private Task? _listenerTask;
+
+    public WebSocketServer(string host = "localhost", int port = 8080)
+    {
+        _httpListener = new HttpListener();
+        _httpListener.Prefixes.Add($"http://{host}:{port}/");
+        _cancellationTokenSource = new CancellationTokenSource();
+        _connectedClients = new ConcurrentDictionary<string, WsClient>();
+    }
+
+    public async Task StartAsync()
+    {
+        if (_isRunning)
+        {
+            Console.WriteLine("WebSocket server is already running.");
+            return;
+        }
+
+        try
+        {
+            _httpListener.Start();
+            _isRunning = true;
+            Console.WriteLine($"WebSocket server started on {_httpListener.Prefixes.First()}");
+
+            _listenerTask = ListenForConnectionsAsync(_cancellationTokenSource.Token);
+
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to start WebSocket server: {ex.Message}");
+            _isRunning = false;
+            throw;
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        if (!_isRunning)
+            return;
+
+        try
+        {
+            _cancellationTokenSource.Cancel();
+
+            _httpListener.Stop();
+            _isRunning = false;
+
+            if (_listenerTask != null)
+            {
+                try
+                {
+                    await Task.WhenAny(_listenerTask, Task.Delay(2000));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Error waiting for listener task: {ex.Message}");
+                }
+            }
+
+            var closeTasks = new List<Task>();
+            foreach (var client in _connectedClients.Values)
+            {
+                if (client.State == WebSocketState.Open)
+                {
+                    closeTasks.Add(client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None));
+                }
+            }
+
+            if (closeTasks.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(closeTasks);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Error closing client connections: {ex.Message}");
+                }
+            }
+
+            _connectedClients.Clear();
+            Console.WriteLine("WebSocket server stopped successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error during server shutdown: {ex.Message}");
+        }
+    }
+
+    private async Task ListenForConnectionsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && _isRunning)
+            {
+                try
+                {
+                    var context = await _httpListener.GetContextAsync();
+
+                    if (context.Request.IsWebSocketRequest)
+                    {
+                        _ = Task.Run(() => HandleWebSocketConnectionAsync(context), cancellationToken);
+                    }
+                    else
+                    {
+                        context.Response.StatusCode = 400;
+                        context.Response.Close();
+                    }
+                }
+                catch (HttpListenerException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        Console.WriteLine($"Error accepting connection: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (!(ex is OperationCanceledException))
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"Error in connection listener: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task HandleWebSocketConnectionAsync(HttpListenerContext context)
+    {
+        WebSocketContext? webSocketContext = null;
+        string clientId = Guid.NewGuid().ToString();
+
+        try
+        {
+            webSocketContext = await context.AcceptWebSocketAsync(subProtocol: null);
+            var webSocket = webSocketContext.WebSocket;
+
+            if (webSocket.State == WebSocketState.Open)
+            {
+                _connectedClients.TryAdd(clientId, webSocket);
+                Console.WriteLine($"Client {clientId} connected from {context.Request.RemoteEndPoint}");
+
+                await HandleClientMessagesAsync(webSocket, clientId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error handling WebSocket connection for client {clientId}: {ex.Message}");
+        }
+        finally
+        {
+            _connectedClients.TryRemove(clientId, out _);
+
+            if (webSocketContext?.WebSocket.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await webSocketContext.WebSocket.CloseAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        "Connection closed",
+                        CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error closing WebSocket for client {clientId}: {ex.Message}");
+                }
+            }
+
+            Console.WriteLine($"Client {clientId} disconnected");
+        }
+    }
+
+    private async Task HandleClientMessagesAsync(WsClient webSocket, string clientId)
+    {
+        var buffer = new byte[1024 * 4];
+
+        try
+        {
+            while (webSocket.State == WebSocketState.Open && !_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancellationTokenSource.Token);
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                    break;
+                }
+
+                if (result.MessageType == WebSocketMessageType.Binary)
+                {
+                    await ProcessBinaryMessage(webSocket, buffer, result.Count, clientId);
+                }
+            }
+        }
+        catch (WebSocketException ex)
+        {
+            Console.WriteLine($"WebSocket error for client {clientId}: {ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error handling messages for client {clientId}: {ex.Message}");
+        }
+    }
+
+    private async Task ProcessBinaryMessage(WsClient webSocket, byte[] buffer, int messageLength, string clientId)
+    {
+        try
+        {
+            var messageData = new byte[messageLength];
+            Array.Copy(buffer, messageData, messageLength);
+
+            var command = WebSocketCommand.Deserialize(messageData);
+
+            Console.WriteLine($"Client {clientId} sent command: '{command.Command}' (ID: {command.MessageId})");
+
+            var response = WebSocketResponse.MockResponse(command.MessageId);
+
+            response = WebSocketResponse.FromResult(
+                0,
+                $"Mock: Received command '{command.Command}' with {command.CommandLength} bytes",
+                "",
+                command.MessageId
+            );
+
+            var responseData = response.Serialize();
+            await webSocket.SendAsync(
+                new ArraySegment<byte>(responseData),
+                WebSocketMessageType.Binary,
+                true,
+                CancellationToken.None);
+
+            Console.WriteLine($"Sent response to client {clientId} for command ID: {command.MessageId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing binary message from client {clientId}: {ex.Message}");
+
+            try
+            {
+                var errorResponse = WebSocketResponse.FromResult(
+                    -1,
+                    "",
+                    $"Error processing command: {ex.Message}",
+                    Guid.NewGuid());
+
+                var errorData = errorResponse.Serialize();
+                await webSocket.SendAsync(
+                    new ArraySegment<byte>(errorData),
+                    WebSocketMessageType.Binary,
+                    true,
+                    CancellationToken.None);
+            }
+            catch (Exception sendEx)
+            {
+                Console.WriteLine($"Failed to send error response to client {clientId}: {sendEx.Message}");
+            }
+        }
+    }
+
+    public bool IsRunning => _isRunning;
+
+    public int ConnectedClientCount => _connectedClients.Count(kvp => kvp.Value.State == WebSocketState.Open);
+}
