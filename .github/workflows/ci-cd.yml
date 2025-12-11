@@ -1,0 +1,148 @@
+name: Pipeline
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        dotnet-quality: 'ga'
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Check code formatting
+      run: dotnet format --verify-no-changes --verbosity diagnostic
+    
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+    
+    - name: Run tests with coverage
+      run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+    
+    - name: Install ReportGenerator
+      run: dotnet tool install --global dotnet-reportgenerator-globaltool
+    
+    - name: Generate coverage report
+      run: reportgenerator -reports:"./coverage/**/coverage.cobertura.xml" -targetdir:"./coverage/report" -reporttypes:"Html;TextSummary"
+    
+    - name: Install bc
+      run: sudo apt-get update && sudo apt-get install -y bc
+
+    - name: Check coverage threshold
+      run: |
+        COVERAGE=$(grep -oP 'Line coverage: \K[0-9.]+' ./coverage/report/Summary.txt)
+        echo "Current coverage: $COVERAGE%"
+        if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+          echo "❌ Coverage is below 60% (current: $COVERAGE%)"
+          exit 1
+        else
+          echo "✅ Coverage is acceptable: $COVERAGE%"
+        fi
+    
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-report
+        path: ./coverage/report/
+
+  release:
+    needs: build-and-test
+    if: github.event_name == 'pull_request' && github.base_ref == 'stage'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        dotnet-quality: 'ga'
+    
+    - name: Restore dependencies
+      run: dotnet restore
+
+    # Linux single-file
+    - name: Publish Linux (single file)
+      run: dotnet publish src/DotnetTestProject.App/DotnetTestProject.App.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/linux
+
+    # Windows single-file (.exe)
+    - name: Publish Windows (single file)
+      run: dotnet publish src/DotnetTestProject.App/DotnetTestProject.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/windows
+
+    # macOS single-file
+    - name: Publish macOS (single file)
+      run: dotnet publish src/DotnetTestProject.App/DotnetTestProject.App.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/macos
+
+    - name: Create ZIP archives
+      run: |
+        cd publish
+
+        # Linux
+        cd linux
+        APP_FILE=$(find . -maxdepth 1 -type f -perm -u+x | head -n 1)
+        echo "Linux executable: $APP_FILE"
+        zip ../../release-linux-x64.zip "$APP_FILE"
+        cd ..
+
+        # Windows
+        cd windows
+        APP_FILE=$(find . -maxdepth 1 -type f -name "*.exe" | head -n 1)
+        echo "Windows executable: $APP_FILE"
+        zip ../../release-win-x64.zip "$APP_FILE"
+        cd ..
+
+        # macOS
+        cd macos
+        APP_FILE=$(find . -maxdepth 1 -type f -perm -u+x | head -n 1)
+        echo "macOS executable: $APP_FILE"
+        zip ../../release-osx-x64.zip "$APP_FILE"
+        cd ../..
+
+    - name: Get PR number
+      id: pr
+      run: echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+    
+    - name: Delete existing release if exists
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG_NAME="pr-${{ steps.pr.outputs.number }}-stage"
+        if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+          echo "Deleting existing release: $TAG_NAME"
+          gh release delete "$TAG_NAME" --yes
+        fi
+        if git rev-parse "$TAG_NAME" > /dev/null 2>&1; then
+          echo "Deleting existing tag: $TAG_NAME"
+          git push --delete origin "$TAG_NAME" || true
+        fi
+    
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG_NAME="pr-${{ steps.pr.outputs.number }}-stage"
+        gh release create "$TAG_NAME" \
+          release-linux-x64.zip \
+          release-win-x64.zip \
+          release-osx-x64.zip \
+          --title "CTFDeck Release #${{ steps.pr.outputs.number }} to stage" \
+          --notes "Automated release build for PR #${{ steps.pr.outputs.number }} targeting stage branch" \
+          --target ${{ github.head_ref }}
