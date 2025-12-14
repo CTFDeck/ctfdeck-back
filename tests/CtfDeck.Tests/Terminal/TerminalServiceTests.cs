@@ -1,10 +1,16 @@
 using Xunit;
 using CtfDeck.Terminal.Terminal;
+using System.Runtime.InteropServices;
 
 namespace CtfDeck.Tests.Terminal;
 
 public class TerminalServiceTests
 {
+    private static string GetExpectedPromptSymbol()
+    {
+        // Windows uses ">", Unix systems use "$" or "#"
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ">" : "$";
+    }
     [Fact]
     public async Task RunAsync_WithExitCommand_ShouldTerminate()
     {
