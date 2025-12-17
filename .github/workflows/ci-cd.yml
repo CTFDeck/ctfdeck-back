@@ -81,15 +81,15 @@ jobs:
 
     # Linux single-file
     - name: Publish Linux (single file)
-      run: dotnet publish ./DotnetTestProject.sln -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/linux
+      run: dotnet publish ./CtfDeck.sln -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/linux
 
     # Windows single-file (.exe)
     - name: Publish Windows (single file)
-      run: dotnet publish src/DotnetTestProject.App/DotnetTestProject.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/windows
+      run: dotnet publish src/CtfDeck.App/CtfDeck.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/windows
 
     # macOS single-file
     - name: Publish macOS (single file)
-      run: dotnet publish src/DotnetTestProject.App/DotnetTestProject.App.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/macos
+      run: dotnet publish src/CtfDeck.App/CtfDeck.App.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/macos
 
     - name: Create ZIP archives
       run: |
