@@ -61,7 +61,10 @@ jobs:
 
   release:
     needs: build-and-test
-    if: github.event_name == 'pull_request' && github.base_ref == 'stage'
+    # Déclenche sur PR vers stage OU sur push vers stage
+    if: |
+      (github.event_name == 'pull_request' && github.base_ref == 'stage') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/stage')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -103,7 +106,7 @@ jobs:
             -p:EnableCompressionInSingleFile=true \
             -o ./publish/windows
 
-      - name: Publish macOS (single file)
+      - name: Publish macOS Intel (single file)
         run: |
           dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
             -c Release -r osx-x64 \
@@ -113,56 +116,71 @@ jobs:
             -p:UseAppHost=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true \
-            -o ./publish/macos
+            -o ./publish/macos-intel
 
-      - name: Verify outputs are single executables
+      - name: Publish macOS ARM (single file)
         run: |
-          echo "Linux content:"
-          ls -la ./publish/linux
-          echo "Windows content:"
-          ls -la ./publish/windows
-          echo "macOS content:"
-          ls -la ./publish/macos
+          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+            -c Release -r osx-arm64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -o ./publish/macos-arm
 
-          LINUX_EXE=$(find ./publish/linux -maxdepth 1 -type f -perm -u+x | head -n 1)
-          WIN_EXE=$(find ./publish/windows -maxdepth 1 -type f -name "*.exe" | head -n 1)
-          MAC_EXE=$(find ./publish/macos -maxdepth 1 -type f -perm -u+x | head -n 1)
-
-          if [ -z "$LINUX_EXE" ]; then echo "❌ Linux executable not found"; exit 1; fi
-          if [ -z "$WIN_EXE" ]; then echo "❌ Windows executable not found"; exit 1; fi
-          if [ -z "$MAC_EXE" ]; then echo "❌ macOS executable not found"; exit 1; fi
-
-          echo "✅ Linux exe: $LINUX_EXE"
-          echo "✅ Windows exe: $WIN_EXE"
-          echo "✅ macOS exe: $MAC_EXE"
+      - name: List all published files
+        run: |
+          echo "=== Linux (x64) ==="
+          ls -lah ./publish/linux/
+          echo ""
+          echo "=== Windows (x64) ==="
+          ls -lah ./publish/windows/
+          echo ""
+          echo "=== macOS Intel (x64) ==="
+          ls -lah ./publish/macos-intel/
+          echo ""
+          echo "=== macOS ARM (arm64) ==="
+          ls -lah ./publish/macos-arm/
 
       - name: Create ZIP archives
         run: |
-          # Linux
-          LINUX_EXE=$(find ./publish/linux -maxdepth 1 -type f -perm -u+x | head -n 1)
-          zip -j ./release-linux-x64.zip "$LINUX_EXE"
+          cd ./publish/linux && zip -r ../../release-linux-x64.zip . && cd ../..
+          cd ./publish/windows && zip -r ../../release-win-x64.zip . && cd ../..
+          cd ./publish/macos-intel && zip -r ../../release-osx-x64.zip . && cd ../..
+          cd ./publish/macos-arm && zip -r ../../release-osx-arm64.zip . && cd ../..
 
-          # Windows
-          WIN_EXE=$(find ./publish/windows -maxdepth 1 -type f -name "*.exe" | head -n 1)
-          zip -j ./release-win-x64.zip "$WIN_EXE"
+      - name: Verify ZIP files
+        run: |
+          echo "Created release archives:"
+          ls -lh release-*.zip
 
-          # macOS
-          MAC_EXE=$(find ./publish/macos -maxdepth 1 -type f -perm -u+x | head -n 1)
-          zip -j ./release-osx-x64.zip "$MAC_EXE"
-
-      - name: Get PR number
-        id: pr
-        run: echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+      - name: Get PR number or use commit SHA
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "tag=pr-${{ github.event.pull_request.number }}-stage" >> $GITHUB_OUTPUT
+            echo "title=CTFDeck Release #${{ github.event.pull_request.number }} to stage" >> $GITHUB_OUTPUT
+            echo "notes=Automated release build for PR #${{ github.event.pull_request.number }} targeting stage branch" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+            echo "tag=stage-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "title=CTFDeck Stage Release ${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "notes=Automated release build for commit ${SHORT_SHA} on stage branch" >> $GITHUB_OUTPUT
+          fi
 
       - name: Delete existing release if exists
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_NAME="pr-${{ steps.pr.outputs.number }}-stage"
+          TAG_NAME="${{ steps.version.outputs.tag }}"
           if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            echo "Deleting existing release $TAG_NAME"
             gh release delete "$TAG_NAME" --yes
           fi
-          if git rev-parse "$TAG_NAME" > /dev/null 2>&1; then
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME"; then
+            echo "Deleting existing tag $TAG_NAME"
             git push --delete origin "$TAG_NAME" || true
           fi
 
@@ -170,11 +188,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_NAME="pr-${{ steps.pr.outputs.number }}-stage"
+          TAG_NAME="${{ steps.version.outputs.tag }}"
           gh release create "$TAG_NAME" \
             release-linux-x64.zip \
             release-win-x64.zip \
             release-osx-x64.zip \
-            --title "CTFDeck Release #${{ steps.pr.outputs.number }} to stage" \
-            --notes "Automated release build for PR #${{ steps.pr.outputs.number }} targeting stage branch" \
-            --target ${{ github.head_ref }}
+            release-osx-arm64.zip \
+            --title "${{ steps.version.outputs.title }}" \
+            --notes "${{ steps.version.outputs.notes }}" \
+            --target ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
