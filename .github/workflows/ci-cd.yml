@@ -9,140 +9,191 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-        dotnet-quality: 'ga'
-    
-    - name: Restore dependencies
-      run: dotnet restore
-    
-    - name: Check code formatting
-      run: dotnet format --verify-no-changes --verbosity diagnostic
-    
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
-    
-    - name: Run tests with coverage
-      run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
-    
-    - name: Install ReportGenerator
-      run: dotnet tool install --global dotnet-reportgenerator-globaltool
-    
-    - name: Generate coverage report
-      run: reportgenerator -reports:"./coverage/**/coverage.cobertura.xml" -targetdir:"./coverage/report" -reporttypes:"Html;TextSummary"
-    
-    - name: Install bc
-      run: sudo apt-get update && sudo apt-get install -y bc
 
-    - name: Check coverage threshold
-      run: |
-        COVERAGE=$(grep -oP 'Line coverage: \K[0-9.]+' ./coverage/report/Summary.txt)
-        echo "Current coverage: $COVERAGE%"
-        if (( $(echo "$COVERAGE < 60" | bc -l) )); then
-          echo "❌ Coverage is below 60% (current: $COVERAGE%)"
-          exit 1
-        else
-          echo "✅ Coverage is acceptable: $COVERAGE%"
-        fi
-    
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: coverage-report
-        path: ./coverage/report/
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          dotnet-quality: 'ga'
+
+      - name: Restore dependencies
+        run: dotnet restore ./CtfDeck.sln
+
+      - name: Check code formatting
+        run: dotnet format ./CtfDeck.sln --verify-no-changes --verbosity diagnostic
+
+      - name: Build
+        run: dotnet build ./CtfDeck.sln --configuration Release --no-restore
+
+      - name: Run tests with coverage
+        run: dotnet test ./CtfDeck.sln --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+      - name: Install ReportGenerator
+        run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./coverage/**/coverage.cobertura.xml" -targetdir:"./coverage/report" -reporttypes:"Html;TextSummary"
+
+      - name: Install bc
+        run: sudo apt-get update && sudo apt-get install -y bc
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(grep -oP 'Line coverage: \K[0-9.]+' ./coverage/report/Summary.txt)
+          echo "Current coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "❌ Coverage is below 60% (current: $COVERAGE%)"
+            exit 1
+          else
+            echo "✅ Coverage is acceptable: $COVERAGE%"
+          fi
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: ./coverage/report/
 
   release:
     needs: build-and-test
-    if: github.event_name == 'pull_request' && github.base_ref == 'stage'
+    # Déclenche sur PR vers stage OU sur push vers stage
+    if: |
+      (github.event_name == 'pull_request' && github.base_ref == 'stage') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/stage')
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-        dotnet-quality: 'ga'
-    
-    - name: Restore dependencies
-      run: dotnet restore
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # Linux single-file
-    - name: Publish Linux (single file)
-      run: dotnet publish ./CtfDeck.sln -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/linux
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          dotnet-quality: 'ga'
 
-    # Windows single-file (.exe)
-    - name: Publish Windows (single file)
-      run: dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/windows
+      - name: Restore dependencies
+        run: dotnet restore ./CtfDeck.sln
 
-    # macOS single-file
-    - name: Publish macOS (single file)
-      run: dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true -o ./publish/macos
+      - name: Publish Linux (single file)
+        run: |
+          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+            -c Release -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -o ./publish/linux
 
-    - name: Create ZIP archives
-      run: |
-        cd publish
+      - name: Publish Windows (single file)
+        run: |
+          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+            -c Release -r win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -o ./publish/windows
 
-        # Linux
-        cd linux
-        APP_FILE=$(find . -maxdepth 1 -type f -perm -u+x | head -n 1)
-        echo "Linux executable: $APP_FILE"
-        zip ../../release-linux-x64.zip "$APP_FILE"
-        cd ..
+      - name: Publish macOS Intel (single file)
+        run: |
+          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+            -c Release -r osx-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -o ./publish/macos-intel
 
-        # Windows
-        cd windows
-        APP_FILE=$(find . -maxdepth 1 -type f -name "*.exe" | head -n 1)
-        echo "Windows executable: $APP_FILE"
-        zip ../../release-win-x64.zip "$APP_FILE"
-        cd ..
+      - name: Publish macOS ARM (single file)
+        run: |
+          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+            -c Release -r osx-arm64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -o ./publish/macos-arm
 
-        # macOS
-        cd macos
-        APP_FILE=$(find . -maxdepth 1 -type f -perm -u+x | head -n 1)
-        echo "macOS executable: $APP_FILE"
-        zip ../../release-osx-x64.zip "$APP_FILE"
-        cd ../..
+      - name: List all published files
+        run: |
+          echo "=== Linux (x64) ==="
+          ls -lah ./publish/linux/
+          echo ""
+          echo "=== Windows (x64) ==="
+          ls -lah ./publish/windows/
+          echo ""
+          echo "=== macOS Intel (x64) ==="
+          ls -lah ./publish/macos-intel/
+          echo ""
+          echo "=== macOS ARM (arm64) ==="
+          ls -lah ./publish/macos-arm/
 
-    - name: Get PR number
-      id: pr
-      run: echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-    
-    - name: Delete existing release if exists
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        TAG_NAME="pr-${{ steps.pr.outputs.number }}-stage"
-        if gh release view "$TAG_NAME" > /dev/null 2>&1; then
-          echo "Deleting existing release: $TAG_NAME"
-          gh release delete "$TAG_NAME" --yes
-        fi
-        if git rev-parse "$TAG_NAME" > /dev/null 2>&1; then
-          echo "Deleting existing tag: $TAG_NAME"
-          git push --delete origin "$TAG_NAME" || true
-        fi
-    
-    - name: Create GitHub Release
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        TAG_NAME="pr-${{ steps.pr.outputs.number }}-stage"
-        gh release create "$TAG_NAME" \
-          release-linux-x64.zip \
-          release-win-x64.zip \
-          release-osx-x64.zip \
-          --title "CTFDeck Release #${{ steps.pr.outputs.number }} to stage" \
-          --notes "Automated release build for PR #${{ steps.pr.outputs.number }} targeting stage branch" \
-          --target ${{ github.head_ref }}
+      - name: Create ZIP archives
+        run: |
+          cd ./publish/linux && zip -r ../../release-linux-x64.zip . && cd ../..
+          cd ./publish/windows && zip -r ../../release-win-x64.zip . && cd ../..
+          cd ./publish/macos-intel && zip -r ../../release-osx-x64.zip . && cd ../..
+          cd ./publish/macos-arm && zip -r ../../release-osx-arm64.zip . && cd ../..
+
+      - name: Verify ZIP files
+        run: |
+          echo "Created release archives:"
+          ls -lh release-*.zip
+
+      - name: Get PR number or use commit SHA
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "tag=pr-${{ github.event.pull_request.number }}-stage" >> $GITHUB_OUTPUT
+            echo "title=CTFDeck Release #${{ github.event.pull_request.number }} to stage" >> $GITHUB_OUTPUT
+            echo "notes=Automated release build for PR #${{ github.event.pull_request.number }} targeting stage branch" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+            echo "tag=stage-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "title=CTFDeck Stage Release ${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "notes=Automated release build for commit ${SHORT_SHA} on stage branch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete existing release if exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            echo "Deleting existing release $TAG_NAME"
+            gh release delete "$TAG_NAME" --yes
+          fi
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME"; then
+            echo "Deleting existing tag $TAG_NAME"
+            git push --delete origin "$TAG_NAME" || true
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          gh release create "$TAG_NAME" \
+            release-linux-x64.zip \
+            release-win-x64.zip \
+            release-osx-x64.zip \
+            release-osx-arm64.zip \
+            --title "${{ steps.version.outputs.title }}" \
+            --notes "${{ steps.version.outputs.notes }}" \
+            --target ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
