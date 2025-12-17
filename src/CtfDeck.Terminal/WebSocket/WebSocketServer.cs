@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
+using CtfDeck.Terminal.Terminal;
 using WsClient = System.Net.WebSockets.WebSocket;
 
 namespace CtfDeck.Terminal.WebSocket;
@@ -11,6 +12,7 @@ public class WebSocketServer
     private readonly HttpListener _httpListener;
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly ConcurrentDictionary<string, WsClient> _connectedClients;
+    private readonly ConcurrentDictionary<string, TerminalExecutor> _clientExecutors;
     private bool _isRunning;
     private Task? _listenerTask;
 
@@ -20,6 +22,7 @@ public class WebSocketServer
         _httpListener.Prefixes.Add($"http://{host}:{port}/");
         _cancellationTokenSource = new CancellationTokenSource();
         _connectedClients = new ConcurrentDictionary<string, WsClient>();
+        _clientExecutors = new ConcurrentDictionary<string, TerminalExecutor>();
     }
 
     public async Task StartAsync()
@@ -161,6 +164,7 @@ public class WebSocketServer
             if (webSocket.State == WebSocketState.Open)
             {
                 _connectedClients.TryAdd(clientId, webSocket);
+                _clientExecutors.TryAdd(clientId, new TerminalExecutor());
                 Console.WriteLine($"Client {clientId} connected from {context.Request.RemoteEndPoint}");
 
                 await HandleClientMessagesAsync(webSocket, clientId);
@@ -173,6 +177,7 @@ public class WebSocketServer
         finally
         {
             _connectedClients.TryRemove(clientId, out _);
+            _clientExecutors.TryRemove(clientId, out _);
 
             if (webSocketContext?.WebSocket.State == WebSocketState.Open)
             {
@@ -240,14 +245,27 @@ public class WebSocketServer
 
             Console.WriteLine($"Client {clientId} sent command: '{command.Command}' (ID: {command.MessageId})");
 
-            var response = WebSocketResponse.MockResponse(command.MessageId);
+            WebSocketResponse response;
 
-            response = WebSocketResponse.FromResult(
-                0,
-                $"Mock: Received command '{command.Command}' with {command.CommandLength} bytes",
-                "",
-                command.MessageId
-            );
+            if (_clientExecutors.TryGetValue(clientId, out var executor))
+            {
+                var result = await executor.ExecuteAsync(command.Command);
+                response = WebSocketResponse.FromResult(
+                    result.ExitCode,
+                    result.Output,
+                    result.Error,
+                    command.MessageId
+                );
+            }
+            else
+            {
+                response = WebSocketResponse.FromResult(
+                    -1,
+                    "",
+                    "No terminal executor found for this client",
+                    command.MessageId
+                );
+            }
 
             var responseData = response.Serialize();
             await webSocket.SendAsync(
