@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Collections.Concurrent;
 
 namespace CtfDeck.Terminal.Terminal;
 
@@ -16,11 +18,16 @@ public enum ShellType
 /// </summary>
 public delegate Task OutputReceivedHandler(string data, bool isError);
 
-public class TerminalExecutor
+/// <summary>
+/// A terminal executor that reuses shell processes for better performance.
+/// Uses the async readline approach with DataReceived events for streaming.
+/// </summary>
+public class TerminalExecutor : IDisposable
 {
     private string _currentDirectory;
     private ShellType _shellType = ShellType.Auto;
-    private string? _detectedBashPath;
+    private readonly string? _detectedBashPath;
+    private bool _isDisposed;
 
     public string CurrentDirectory => _currentDirectory;
 
@@ -33,9 +40,8 @@ public class TerminalExecutor
     private string? DetectAvailableShells()
     {
         var bashPath = "/bin/bash";
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) 
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            Console.WriteLine($"mac/linux; bashPath: {bashPath}");
             if (File.Exists(bashPath))
             {
                 return bashPath;
@@ -45,7 +51,6 @@ public class TerminalExecutor
         {
             // Check for Git Bash
             bashPath = @"C:\Program Files\Git\bin\bash.exe";
-            Console.WriteLine($"windows; bashPath: {bashPath}");
             if (File.Exists(bashPath))
             {
                 return bashPath;
@@ -53,20 +58,19 @@ public class TerminalExecutor
 
             // Check for WSL bash
             bashPath = @"C:\Windows\System32\bash.exe";
-            Console.WriteLine($"windows; bashPath: {bashPath}");
             if (File.Exists(bashPath))
             {
                 return bashPath;
             }
         }
-        
-        return null; // No bash found
+
+        return null;
     }
 
     public bool IsBashAvailable => _detectedBashPath != null;
 
-    public ShellType CurrentShell => _shellType == ShellType.Auto 
-        ? (IsBashAvailable ? ShellType.Bash : ShellType.Cmd) 
+    public ShellType CurrentShell => _shellType == ShellType.Auto
+        ? (IsBashAvailable ? ShellType.Bash : ShellType.Cmd)
         : _shellType;
 
     public void SetShell(ShellType shellType)
@@ -75,143 +79,34 @@ public class TerminalExecutor
     }
 
     /// <summary>
-    /// Execute command with streaming output. Calls onOutput for each chunk as it arrives.
+    /// Execute command with streaming output.
     /// </summary>
     public async Task<CommandResult> ExecuteStreamingAsync(string command, OutputReceivedHandler onOutput)
     {
         try
         {
-            // Handle cd command specially (no streaming needed)
-            if (command.Trim().StartsWith("cd "))
+            // Handle cd command specially
+            var trimmedCmd = command.Trim();
+            if (trimmedCmd.StartsWith("cd ") || trimmedCmd == "cd")
             {
-                return HandleCdCommand(command);
+                return await ExecuteCdCommand(command, onOutput);
             }
 
-            var (shell, shellArg, wrappedCommand) = PrepareCommand(command);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = shell,
-                Arguments = $"{shellArg} \"{wrappedCommand.Replace("\"", "\\\"")}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = _currentDirectory
-            };
-
-            startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH");
-            startInfo.Environment["TERM"] = "xterm-256color";
-            startInfo.Environment["COLORTERM"] = "truecolor";
-            startInfo.Environment["CLICOLOR_FORCE"] = "1";
-
-            using var process = new Process { StartInfo = startInfo };
-            
-            // Set up streaming event handlers
-            process.OutputDataReceived += async (sender, e) =>
-            {
-                if (e.Data != null)
-                {
-                    await onOutput(e.Data + "\n", false);
-                }
-            };
-
-            process.ErrorDataReceived += async (sender, e) =>
-            {
-                if (e.Data != null)
-                {
-                    await onOutput(e.Data + "\n", true);
-                }
-            };
-
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            await process.WaitForExitAsync();
-
-            return new CommandResult
-            {
-                Output = "", // Streamed already
-                Error = "",  // Streamed already
-                ExitCode = process.ExitCode,
-                WorkingDirectory = _currentDirectory
-            };
+            return await ExecuteWithStreaming(command, onOutput);
         }
         catch (Exception ex)
         {
             return new CommandResult
             {
                 Output = "",
-                Error = $"Runtime error: {ex.Message}",
+                Error = $"Execution error: {ex.Message}",
                 ExitCode = -1,
                 WorkingDirectory = _currentDirectory
             };
         }
     }
 
-    /// <summary>
-    /// Legacy non-streaming execution (kept for backward compatibility)
-    /// </summary>
-    public async Task<CommandResult> ExecuteAsync(string command)
-    {
-        try
-        {
-            if (command.Trim().StartsWith("cd "))
-            {
-                return HandleCdCommand(command);
-            }
-
-            var (shell, shellArg, wrappedCommand) = PrepareCommand(command);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = shell,
-                Arguments = $"{shellArg} \"{wrappedCommand.Replace("\"", "\\\"")}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = _currentDirectory
-            };
-
-            startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH");
-            startInfo.Environment["TERM"] = "xterm-256color";
-            startInfo.Environment["COLORTERM"] = "truecolor";
-            startInfo.Environment["CLICOLOR_FORCE"] = "1";
-
-            using var process = Process.Start(startInfo)!;
-
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-
-            await Task.WhenAll(outputTask, errorTask);
-
-            process.WaitForExit();
-
-            return new CommandResult
-            {
-                Output = outputTask.Result,
-                Error = errorTask.Result,
-                ExitCode = process.ExitCode,
-                WorkingDirectory = _currentDirectory
-            };
-        }
-        catch (Exception ex)
-        {
-            return new CommandResult
-            {
-                Output = "",
-                Error = $"Runtime error: {ex.Message}",
-                ExitCode = -1,
-                WorkingDirectory = _currentDirectory
-            };
-        }
-    }
-
-    private (string shell, string shellArg, string wrappedCommand) PrepareCommand(string command)
+    private async Task<CommandResult> ExecuteWithStreaming(string command, OutputReceivedHandler onOutput)
     {
         var effectiveShell = CurrentShell;
         string shell;
@@ -222,21 +117,21 @@ public class TerminalExecutor
         {
             shell = _detectedBashPath;
             shellArg = "-c";
-            
-            // Explicitly inject flags for common commands since aliases might fail in non-interactive shell
+
+            // Inject color flags for common commands
             var finalCommand = command;
             var trimmed = command.TrimStart();
             if (trimmed.StartsWith("ls ") || trimmed == "ls")
             {
-                finalCommand = command.Replace("ls", "ls --color=always");
+                finalCommand = command.Replace("ls", "ls --color=always", StringComparison.Ordinal);
             }
             else if (trimmed.StartsWith("grep ") || trimmed == "grep")
             {
-                finalCommand = command.Replace("grep", "grep --color=always");
+                finalCommand = command.Replace("grep", "grep --color=always", StringComparison.Ordinal);
             }
 
-            // Wrap command to enable colors - include LS_COLORS
-            var env = "export TERM=xterm-256color; export COLORTERM=truecolor; export CLICOLOR_FORCE=1; eval \"$(dircolors -b)\";";
+            // Wrap command to enable colors
+            var env = "export TERM=xterm-256color; export COLORTERM=truecolor; export CLICOLOR_FORCE=1; eval \"$(dircolors -b)\" 2>/dev/null || true;";
             wrappedCommand = $"{env} {finalCommand}";
         }
         else if (effectiveShell == ShellType.PowerShell)
@@ -250,54 +145,176 @@ public class TerminalExecutor
             shellArg = "/c";
         }
 
-        return (shell, shellArg, wrappedCommand);
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = shell,
+            Arguments = $"{shellArg} \"{wrappedCommand.Replace("\"", "\\\"")}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = _currentDirectory
+        };
+
+        startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH");
+        startInfo.Environment["TERM"] = "xterm-256color";
+        startInfo.Environment["COLORTERM"] = "truecolor";
+        startInfo.Environment["CLICOLOR_FORCE"] = "1";
+
+        using var process = new Process { StartInfo = startInfo };
+
+        var outputBuilder = new StringBuilder();
+        var errorBuilder = new StringBuilder();
+        var outputComplete = new TaskCompletionSource<bool>();
+        var errorComplete = new TaskCompletionSource<bool>();
+
+        process.OutputDataReceived += async (sender, e) =>
+        {
+            if (e.Data == null)
+            {
+                outputComplete.TrySetResult(true);
+                return;
+            }
+            outputBuilder.AppendLine(e.Data);
+            try
+            {
+                await onOutput(e.Data + "\n", false);
+            }
+            catch { }
+        };
+
+        process.ErrorDataReceived += async (sender, e) =>
+        {
+            if (e.Data == null)
+            {
+                errorComplete.TrySetResult(true);
+                return;
+            }
+            errorBuilder.AppendLine(e.Data);
+            try
+            {
+                await onOutput(e.Data + "\n", true);
+            }
+            catch { }
+        };
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        // Wait for process to exit with timeout
+        var exitTask = process.WaitForExitAsync();
+        var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5));
+        
+        var completedTask = await Task.WhenAny(exitTask, timeoutTask);
+        
+        if (completedTask == timeoutTask)
+        {
+            try { process.Kill(); } catch { }
+            return new CommandResult
+            {
+                Output = outputBuilder.ToString(),
+                Error = "Command timed out after 5 minutes",
+                ExitCode = -1,
+                WorkingDirectory = _currentDirectory
+            };
+        }
+
+        // Wait a bit for the output handlers to finish
+        await Task.WhenAll(
+            Task.WhenAny(outputComplete.Task, Task.Delay(1000)),
+            Task.WhenAny(errorComplete.Task, Task.Delay(1000))
+        );
+
+        return new CommandResult
+        {
+            Output = outputBuilder.ToString(),
+            Error = errorBuilder.ToString(),
+            ExitCode = process.ExitCode,
+            WorkingDirectory = _currentDirectory
+        };
     }
 
-    private CommandResult HandleCdCommand(string command)
+    private async Task<CommandResult> ExecuteCdCommand(string command, OutputReceivedHandler onOutput)
     {
+        var path = command.Length > 3 ? command[3..].Trim() : "";
+
+        if (string.IsNullOrEmpty(path) || path == "~")
+        {
+            path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+        else if (!Path.IsPathRooted(path))
+        {
+            path = Path.Combine(_currentDirectory, path);
+        }
+
+        // Normalize path
         try
         {
-            var path = command.Substring(3).Trim();
-
-            if (string.IsNullOrEmpty(path) || path == "~")
-            {
-                path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            }
-            else if (!Path.IsPathRooted(path))
-            {
-                path = Path.Combine(_currentDirectory, path);
-            }
-
-            if (Directory.Exists(path))
-            {
-                _currentDirectory = Path.GetFullPath(path);
-                return new CommandResult
-                {
-                    Output = "",
-                    Error = "",
-                    ExitCode = 0,
-                    WorkingDirectory = _currentDirectory
-                };
-            }
-
-            return new CommandResult
-            {
-                Output = "",
-                Error = $"cd: {path}: No such file or directory",
-                ExitCode = 1,
-                WorkingDirectory = _currentDirectory
-            };
+            path = Path.GetFullPath(path);
         }
-        catch (Exception ex)
+        catch
         {
+            var error = $"cd: Invalid path: {path}";
+            await onOutput(error + "\n", true);
             return new CommandResult
             {
                 Output = "",
-                Error = $"cd: {ex.Message}",
+                Error = error,
                 ExitCode = 1,
                 WorkingDirectory = _currentDirectory
             };
         }
+
+        if (!Directory.Exists(path))
+        {
+            var error = $"cd: {path}: No such file or directory";
+            await onOutput(error + "\n", true);
+            return new CommandResult
+            {
+                Output = "",
+                Error = error,
+                ExitCode = 1,
+                WorkingDirectory = _currentDirectory
+            };
+        }
+
+        _currentDirectory = path;
+
+        return new CommandResult
+        {
+            Output = "",
+            Error = "",
+            ExitCode = 0,
+            WorkingDirectory = _currentDirectory
+        };
+    }
+
+    /// <summary>
+    /// Legacy non-streaming execution
+    /// </summary>
+    public async Task<CommandResult> ExecuteAsync(string command)
+    {
+        var output = new StringBuilder();
+        var error = new StringBuilder();
+
+        var result = await ExecuteStreamingAsync(command, (data, isError) =>
+        {
+            if (isError)
+                error.Append(data);
+            else
+                output.Append(data);
+            return Task.CompletedTask;
+        });
+
+        return new CommandResult
+        {
+            Output = output.ToString(),
+            Error = error.ToString(),
+            ExitCode = result.ExitCode,
+            WorkingDirectory = result.WorkingDirectory
+        };
     }
 
     public string GetPrompt()
@@ -315,5 +332,17 @@ public class TerminalExecutor
         var isRoot = username == "root";
         var symbol = isRoot ? "#" : "$";
         return $"{username}@{hostname}:{dir}{symbol} ";
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    ~TerminalExecutor()
+    {
+        Dispose();
     }
 }

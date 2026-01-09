@@ -177,7 +177,12 @@ public class WebSocketServer
         finally
         {
             _connectedClients.TryRemove(clientId, out _);
-            _clientExecutors.TryRemove(clientId, out _);
+            
+            // Dispose the executor to clean up the persistent shell process
+            if (_clientExecutors.TryRemove(clientId, out var executor))
+            {
+                executor.Dispose();
+            }
 
             if (webSocketContext?.WebSocket.State == WebSocketState.Open)
             {

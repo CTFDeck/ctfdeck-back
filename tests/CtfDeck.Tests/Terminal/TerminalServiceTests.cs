@@ -177,7 +177,7 @@ public class TerminalServiceTests
     }
 
     [Fact]
-    public async Task Constructor_WithNullParameters_ShouldUseDefaults()
+    public void Constructor_WithNullParameters_ShouldUseDefaults()
     {
         var service = new TerminalService();
 
