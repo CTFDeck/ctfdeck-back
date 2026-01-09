@@ -216,7 +216,7 @@ public class WebSocketServer
 
                 if (result.MessageType == WebSocketMessageType.Binary)
                 {
-                    await ProcessBinaryMessage(webSocket, buffer, result.Count, clientId);
+                    await ProcessBinaryMessageStreaming(webSocket, buffer, result.Count, clientId);
                 }
             }
         }
@@ -234,7 +234,10 @@ public class WebSocketServer
         }
     }
 
-    private async Task ProcessBinaryMessage(WsClient webSocket, byte[] buffer, int messageLength, string clientId)
+    /// <summary>
+    /// Process command with streaming output
+    /// </summary>
+    private async Task ProcessBinaryMessageStreaming(WsClient webSocket, byte[] buffer, int messageLength, string clientId)
     {
         try
         {
@@ -245,38 +248,56 @@ public class WebSocketServer
 
             Console.WriteLine($"Client {clientId} sent command: '{command.Command}' (ID: {command.MessageId})");
 
-            WebSocketResponse response;
-
-            if (_clientExecutors.TryGetValue(clientId, out var executor))
+            if (!_clientExecutors.TryGetValue(clientId, out var executor))
             {
-                var result = await executor.ExecuteAsync(command.Command);
-                response = WebSocketResponse.FromResult(
-                    result.ExitCode,
-                    result.Output,
-                    result.Error,
-                    result.WorkingDirectory,
-                    command.MessageId
-                );
-            }
-            else
-            {
-                response = WebSocketResponse.FromResult(
+                var errorResponse = WebSocketResponse.FromResult(
                     -1,
                     "",
                     "No terminal executor found for this client",
                     Environment.CurrentDirectory,
-                    command.MessageId
-                );
+                    command.MessageId);
+                await SendBinaryAsync(webSocket, errorResponse.Serialize());
+                return;
             }
 
-            var responseData = response.Serialize();
-            await webSocket.SendAsync(
-                new ArraySegment<byte>(responseData),
-                WebSocketMessageType.Binary,
-                true,
-                CancellationToken.None);
+            // Check if this is a simple command that doesn't need streaming (cd, pwd, etc.)
+            var trimmedCommand = command.Command.Trim();
+            if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
+            {
+                // Use non-streaming for cd
+                var result = await executor.ExecuteAsync(command.Command);
+                var response = WebSocketResponse.FromResult(
+                    result.ExitCode,
+                    result.Output,
+                    result.Error,
+                    result.WorkingDirectory,
+                    command.MessageId);
+                await SendBinaryAsync(webSocket, response.Serialize());
+                Console.WriteLine($"Sent complete response to client {clientId} for command ID: {command.MessageId}");
+                return;
+            }
 
-            Console.WriteLine($"Sent response to client {clientId} for command ID: {command.MessageId}");
+            // Use streaming for other commands
+            var streamResult = await executor.ExecuteStreamingAsync(command.Command, async (data, isError) =>
+            {
+                if (webSocket.State != WebSocketState.Open) return;
+
+                var chunkMessage = StreamChunkMessage.FromData(
+                    isError ? MessageType.StreamError : MessageType.StreamOutput,
+                    data,
+                    command.MessageId);
+                
+                await SendBinaryAsync(webSocket, chunkMessage.Serialize());
+            });
+
+            // Send stream end message
+            var endMessage = StreamEndMessage.FromResult(
+                streamResult.ExitCode,
+                executor.CurrentDirectory,
+                command.MessageId);
+            await SendBinaryAsync(webSocket, endMessage.Serialize());
+
+            Console.WriteLine($"Completed streaming for client {clientId}, command ID: {command.MessageId}");
         }
         catch (Exception ex)
         {
@@ -291,17 +312,24 @@ public class WebSocketServer
                     Environment.CurrentDirectory,
                     Guid.NewGuid());
 
-                var errorData = errorResponse.Serialize();
-                await webSocket.SendAsync(
-                    new ArraySegment<byte>(errorData),
-                    WebSocketMessageType.Binary,
-                    true,
-                    CancellationToken.None);
+                await SendBinaryAsync(webSocket, errorResponse.Serialize());
             }
             catch (Exception sendEx)
             {
                 Console.WriteLine($"Failed to send error response to client {clientId}: {sendEx.Message}");
             }
+        }
+    }
+
+    private async Task SendBinaryAsync(WsClient webSocket, byte[] data)
+    {
+        if (webSocket.State == WebSocketState.Open)
+        {
+            await webSocket.SendAsync(
+                new ArraySegment<byte>(data),
+                WebSocketMessageType.Binary,
+                true,
+                CancellationToken.None);
         }
     }
 

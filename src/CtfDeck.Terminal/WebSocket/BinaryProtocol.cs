@@ -2,6 +2,21 @@ using System.Text;
 
 namespace CtfDeck.Terminal.WebSocket;
 
+/// <summary>
+/// Message types for the binary protocol
+/// </summary>
+public enum MessageType : byte
+{
+    /// <summary>Legacy complete response (backward compatible)</summary>
+    CompleteResponse = 0,
+    /// <summary>Streaming output chunk (stdout)</summary>
+    StreamOutput = 1,
+    /// <summary>Streaming error chunk (stderr)</summary>
+    StreamError = 2,
+    /// <summary>Stream completed with exit code and working directory</summary>
+    StreamEnd = 3
+}
+
 public struct WebSocketCommand
 {
     public int CommandLength;
@@ -51,6 +66,88 @@ public struct WebSocketCommand
     }
 }
 
+/// <summary>
+/// Streaming output chunk message
+/// </summary>
+public struct StreamChunkMessage
+{
+    public MessageType Type;
+    public Guid MessageId;
+    public int DataLength;
+    public byte[] DataBytes;
+
+    public string Data => Encoding.UTF8.GetString(DataBytes);
+
+    public static StreamChunkMessage FromData(MessageType type, string data, Guid messageId)
+    {
+        var dataBytes = Encoding.UTF8.GetBytes(data);
+        return new StreamChunkMessage
+        {
+            Type = type,
+            MessageId = messageId,
+            DataLength = dataBytes.Length,
+            DataBytes = dataBytes
+        };
+    }
+
+    public byte[] Serialize()
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+
+        writer.Write((byte)Type);
+        writer.Write(MessageId.ToByteArray());
+        writer.Write(DataLength);
+        writer.Write(DataBytes);
+
+        return stream.ToArray();
+    }
+}
+
+/// <summary>
+/// Stream end message with exit code and working directory
+/// </summary>
+public struct StreamEndMessage
+{
+    public MessageType Type;
+    public Guid MessageId;
+    public int ExitCode;
+    public int WorkingDirectoryLength;
+    public byte[] WorkingDirectoryBytes;
+
+    public string WorkingDirectory => Encoding.UTF8.GetString(WorkingDirectoryBytes);
+
+    public static StreamEndMessage FromResult(int exitCode, string workingDirectory, Guid messageId)
+    {
+        var workingDirectoryBytes = Encoding.UTF8.GetBytes(workingDirectory);
+        return new StreamEndMessage
+        {
+            Type = MessageType.StreamEnd,
+            MessageId = messageId,
+            ExitCode = exitCode,
+            WorkingDirectoryLength = workingDirectoryBytes.Length,
+            WorkingDirectoryBytes = workingDirectoryBytes
+        };
+    }
+
+    public byte[] Serialize()
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+
+        writer.Write((byte)Type);
+        writer.Write(MessageId.ToByteArray());
+        writer.Write(ExitCode);
+        writer.Write(WorkingDirectoryLength);
+        writer.Write(WorkingDirectoryBytes);
+
+        return stream.ToArray();
+    }
+}
+
+/// <summary>
+/// Legacy complete response (kept for backward compatibility and simple commands like cd)
+/// </summary>
 public struct WebSocketResponse
 {
     public int ExitCode;
@@ -95,6 +192,8 @@ public struct WebSocketResponse
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
 
+        // Write message type first (0 = CompleteResponse for backward compatibility)
+        writer.Write((byte)MessageType.CompleteResponse);
         writer.Write(ExitCode);
         writer.Write(OutputLength);
         writer.Write(OutputBytes);
@@ -112,6 +211,9 @@ public struct WebSocketResponse
         using var stream = new MemoryStream(data);
         using var reader = new BinaryReader(stream);
 
+        // Skip message type byte (already checked by caller or assume CompleteResponse)
+        var messageType = reader.ReadByte();
+        
         var exitCode = reader.ReadInt32();
         var outputLength = reader.ReadInt32();
         var outputBytes = reader.ReadBytes(outputLength);
