@@ -177,7 +177,7 @@ public class WebSocketServer
         finally
         {
             _connectedClients.TryRemove(clientId, out _);
-            
+
             // Dispose the executor to clean up the persistent shell process
             if (_clientExecutors.TryRemove(clientId, out var executor))
             {
@@ -283,9 +283,9 @@ public class WebSocketServer
 
             // Use batched streaming for other commands (high-performance)
             await using var batcher = new OutputBatcher(webSocket, command.MessageId);
-            
+
             var streamResult = await executor.ExecuteStreamingAsync(
-                command.Command, 
+                command.Command,
                 (data, isError) => batcher.EnqueueAsync(data, isError).AsTask());
 
             // Complete batching and send stream end

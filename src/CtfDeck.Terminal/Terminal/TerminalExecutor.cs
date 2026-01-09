@@ -38,12 +38,12 @@ public sealed class TerminalExecutor : IDisposable
     /// Executes a command with streaming output
     /// </summary>
     public Task<CommandResult> ExecuteStreamingAsync(
-        string command, 
+        string command,
         OutputReceivedHandler onOutput,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        
+
         return CommandPreprocessor.IsDirectoryChangeCommand(command)
             ? ExecuteCdAsync(command, onOutput)
             : ExecuteShellCommandAsync(command, onOutput, cancellationToken);
@@ -82,7 +82,7 @@ public sealed class TerminalExecutor : IDisposable
         {
             var shell = ShellDetector.GetConfig(_shellType);
             var preparedCommand = CommandPreprocessor.Prepare(command, CurrentShell);
-            
+
             return await ProcessRunner.RunAsync(
                 shell,
                 preparedCommand,

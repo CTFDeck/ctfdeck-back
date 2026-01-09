@@ -23,7 +23,7 @@ public static class ProcessRunner
         CancellationToken cancellationToken = default)
     {
         using var process = CreateProcess(shell, command, workingDirectory);
-        
+
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
         var outputDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -49,7 +49,7 @@ public static class ProcessRunner
     private static Process CreateProcess(ShellConfig shell, string command, string workingDirectory)
     {
         var escapedCommand = command.Replace("\"", "\\\"");
-        
+
         var startInfo = new ProcessStartInfo
         {
             FileName = shell.Executable,
@@ -63,7 +63,7 @@ public static class ProcessRunner
         };
 
         ConfigureEnvironment(startInfo);
-        
+
         return new Process { StartInfo = startInfo };
     }
 
@@ -90,7 +90,7 @@ public static class ProcessRunner
                 outputDone.TrySetResult(true);
                 return;
             }
-            
+
             outputBuilder.AppendLine(e.Data);
             await SafeInvokeCallback(onOutput, e.Data + "\n", false);
         };
@@ -102,7 +102,7 @@ public static class ProcessRunner
                 errorDone.TrySetResult(true);
                 return;
             }
-            
+
             errorBuilder.AppendLine(e.Data);
             await SafeInvokeCallback(onOutput, e.Data + "\n", true);
         };
@@ -132,13 +132,13 @@ public static class ProcessRunner
         try
         {
             await process.WaitForExitAsync(linkedCts.Token);
-            
+
             // Wait for output handlers to drain
             await Task.WhenAll(
                 Task.WhenAny(outputDone.Task, Task.Delay(OutputDrainTimeout, CancellationToken.None)),
                 Task.WhenAny(errorDone.Task, Task.Delay(OutputDrainTimeout, CancellationToken.None))
             );
-            
+
             return process.ExitCode;
         }
         catch (OperationCanceledException)

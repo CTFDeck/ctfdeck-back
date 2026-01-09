@@ -153,10 +153,10 @@ public static class BinaryProtocolSerializer
     /// Serialize a complete response (for cd and simple commands)
     /// </summary>
     public static byte[] SerializeCompleteResponse(
-        Guid messageId, 
-        int exitCode, 
-        string output, 
-        string error, 
+        Guid messageId,
+        int exitCode,
+        string output,
+        string error,
         string workingDirectory)
     {
         using var writer = new PooledBufferWriter();
@@ -236,7 +236,7 @@ public struct WebSocketResponse
         };
     }
 
-    public byte[] Serialize() => 
+    public byte[] Serialize() =>
         BinaryProtocolSerializer.SerializeCompleteResponse(MessageId, ExitCode, Output, Error, WorkingDirectory);
 
     public static WebSocketResponse Deserialize(byte[] data)

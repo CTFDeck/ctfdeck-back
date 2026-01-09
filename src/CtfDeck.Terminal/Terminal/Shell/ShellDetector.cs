@@ -52,7 +52,7 @@ public static class ShellDetector
     private static string? DetectBashPath()
     {
         var paths = IsWindows ? WindowsBashPaths : UnixBashPaths;
-        
+
         foreach (var path in paths)
         {
             if (File.Exists(path))
@@ -60,7 +60,7 @@ public static class ShellDetector
                 return path;
             }
         }
-        
+
         return null;
     }
 
@@ -83,7 +83,7 @@ public static class ShellDetector
     public static ShellConfig GetConfig(ShellType shellType)
     {
         var resolved = ResolveShellType(shellType);
-        
+
         return resolved switch
         {
             ShellType.Bash => new ShellConfig(BashPath.Value ?? throw new InvalidOperationException("Bash not available"), "-c"),

@@ -8,7 +8,7 @@ public static class CommandPreprocessor
     /// <summary>
     /// Environment setup for color support in bash
     /// </summary>
-    private const string BashColorEnv = 
+    private const string BashColorEnv =
         "export TERM=xterm-256color; export COLORTERM=truecolor; export CLICOLOR_FORCE=1; eval \"$(dircolors -b)\" 2>/dev/null || true;";
 
     /// <summary>

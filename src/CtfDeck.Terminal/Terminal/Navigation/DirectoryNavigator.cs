@@ -8,7 +8,7 @@ namespace CtfDeck.Terminal.Terminal;
 public sealed class DirectoryNavigator
 {
     private string _currentDirectory;
-    
+
     public string CurrentDirectory => _currentDirectory;
 
     public DirectoryNavigator(string? initialDirectory = null)
@@ -23,17 +23,17 @@ public sealed class DirectoryNavigator
     public async Task<CommandResult> ChangeDirectoryAsync(string? path, Func<string, bool, Task> onOutput)
     {
         var targetPath = ResolvePath(path);
-        
+
         if (targetPath is null)
         {
             return await CreateErrorResult("cd: Invalid path", onOutput);
         }
-        
+
         if (!Directory.Exists(targetPath))
         {
             return await CreateErrorResult($"cd: {targetPath}: No such file or directory", onOutput);
         }
-        
+
         _currentDirectory = targetPath;
         return CommandResult.Success(_currentDirectory);
     }
@@ -55,7 +55,7 @@ public sealed class DirectoryNavigator
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             path = Path.Combine(home, path[2..]);
         }
-        
+
         // Handle relative paths
         if (!Path.IsPathRooted(path))
         {
@@ -79,7 +79,7 @@ public sealed class DirectoryNavigator
             await onOutput(error + "\n", true);
         }
         catch { }
-        
+
         return CommandResult.Failure(_currentDirectory, error);
     }
 
@@ -99,7 +99,7 @@ public sealed class DirectoryNavigator
         var username = Environment.UserName;
         var hostname = Environment.MachineName;
         var symbol = username == "root" ? "#" : "$";
-        
+
         return $"{username}@{hostname}:{displayPath}{symbol} ";
     }
 }

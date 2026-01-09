@@ -14,7 +14,7 @@ public sealed class OutputBatcher : IAsyncDisposable
     private readonly Channel<(string Data, bool IsError)> _channel;
     private readonly Task _processingTask;
     private readonly CancellationTokenSource _cts;
-    
+
     // Batching configuration
     private const int MaxBatchSize = 8192;  // 8KB max before force-send
     private const int BatchDelayMs = 5;      // 5ms max delay for batching (200Hz)
@@ -24,14 +24,14 @@ public sealed class OutputBatcher : IAsyncDisposable
         _socket = socket;
         _messageId = messageId;
         _cts = new CancellationTokenSource();
-        
+
         // Unbounded channel for maximum throughput
         _channel = Channel.CreateUnbounded<(string, bool)>(new UnboundedChannelOptions
         {
             SingleWriter = false,
             SingleReader = true
         });
-        
+
         _processingTask = ProcessBatchesAsync(_cts.Token);
     }
 
@@ -40,8 +40,8 @@ public sealed class OutputBatcher : IAsyncDisposable
     /// </summary>
     public ValueTask EnqueueAsync(string data, bool isError)
     {
-        return _channel.Writer.TryWrite((data, isError)) 
-            ? ValueTask.CompletedTask 
+        return _channel.Writer.TryWrite((data, isError))
+            ? ValueTask.CompletedTask
             : _channel.Writer.WriteAsync((data, isError));
     }
 
@@ -50,7 +50,7 @@ public sealed class OutputBatcher : IAsyncDisposable
         var reader = _channel.Reader;
         var stdoutBatch = new System.Text.StringBuilder(MaxBatchSize);
         var stderrBatch = new System.Text.StringBuilder(MaxBatchSize);
-        
+
         try
         {
             while (!ct.IsCancellationRequested)
@@ -65,14 +65,14 @@ public sealed class OutputBatcher : IAsyncDisposable
                 // Collect items for batch (with timeout)
                 using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 batchCts.CancelAfter(BatchDelayMs);
-                
+
                 try
                 {
                     while (reader.TryRead(out var item))
                     {
                         var batch = item.IsError ? stderrBatch : stdoutBatch;
                         batch.Append(item.Data);
-                        
+
                         // Force send if batch is large
                         if (batch.Length >= MaxBatchSize)
                         {
@@ -80,16 +80,16 @@ public sealed class OutputBatcher : IAsyncDisposable
                             batch.Clear();
                         }
                     }
-                    
+
                     // Wait a tiny bit more for additional items
-                    while (!batchCts.Token.IsCancellationRequested && 
+                    while (!batchCts.Token.IsCancellationRequested &&
                            await reader.WaitToReadAsync(batchCts.Token))
                     {
                         while (reader.TryRead(out var item))
                         {
                             var batch = item.IsError ? stderrBatch : stdoutBatch;
                             batch.Append(item.Data);
-                            
+
                             if (batch.Length >= MaxBatchSize)
                             {
                                 await FlushBatchAsync(batch, item.IsError, ct);
@@ -121,7 +121,7 @@ public sealed class OutputBatcher : IAsyncDisposable
 
         var messageType = isError ? MessageType.StreamError : MessageType.StreamOutput;
         var data = BinaryProtocolSerializer.SerializeStreamChunk(messageType, _messageId, batch.ToString());
-        
+
         await _socket.SendAsync(data, WebSocketMessageType.Binary, true, ct);
     }
 
@@ -131,7 +131,7 @@ public sealed class OutputBatcher : IAsyncDisposable
     public async Task CompleteAsync(int exitCode, string workingDirectory)
     {
         _channel.Writer.Complete();
-        
+
         try
         {
             // Wait for processing to finish
@@ -151,13 +151,13 @@ public sealed class OutputBatcher : IAsyncDisposable
     {
         _cts.Cancel();
         _channel.Writer.TryComplete();
-        
+
         try
         {
             await _processingTask;
         }
         catch { }
-        
+
         _cts.Dispose();
     }
 }

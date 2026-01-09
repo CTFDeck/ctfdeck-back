@@ -37,7 +37,7 @@ public sealed class TerminalService : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             await _output.WriteAsync(_executor.GetPrompt());
-            
+
             var command = await _input.ReadLineAsync(cancellationToken);
 
             if (ShouldExit(command))
@@ -60,7 +60,7 @@ public sealed class TerminalService : IDisposable
         {
             return true;
         }
-        
+
         var trimmed = command.Trim();
         return ExitCommands.Contains(trimmed);
     }
@@ -82,7 +82,7 @@ public sealed class TerminalService : IDisposable
         {
             await _output.WriteAsync(result.Output);
         }
-        
+
         if (!string.IsNullOrEmpty(result.Error))
         {
             await _error.WriteAsync(result.Error);
