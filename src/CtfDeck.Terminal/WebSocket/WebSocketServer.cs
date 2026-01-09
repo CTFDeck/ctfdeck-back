@@ -278,31 +278,18 @@ public class WebSocketServer
                     result.WorkingDirectory,
                     command.MessageId);
                 await SendBinaryAsync(webSocket, response.Serialize());
-                Console.WriteLine($"Sent complete response to client {clientId} for command ID: {command.MessageId}");
                 return;
             }
 
-            // Use streaming for other commands
-            var streamResult = await executor.ExecuteStreamingAsync(command.Command, async (data, isError) =>
-            {
-                if (webSocket.State != WebSocketState.Open) return;
+            // Use batched streaming for other commands (high-performance)
+            await using var batcher = new OutputBatcher(webSocket, command.MessageId);
+            
+            var streamResult = await executor.ExecuteStreamingAsync(
+                command.Command, 
+                (data, isError) => batcher.EnqueueAsync(data, isError).AsTask());
 
-                var chunkMessage = StreamChunkMessage.FromData(
-                    isError ? MessageType.StreamError : MessageType.StreamOutput,
-                    data,
-                    command.MessageId);
-                
-                await SendBinaryAsync(webSocket, chunkMessage.Serialize());
-            });
-
-            // Send stream end message
-            var endMessage = StreamEndMessage.FromResult(
-                streamResult.ExitCode,
-                executor.CurrentDirectory,
-                command.MessageId);
-            await SendBinaryAsync(webSocket, endMessage.Serialize());
-
-            Console.WriteLine($"Completed streaming for client {clientId}, command ID: {command.MessageId}");
+            // Complete batching and send stream end
+            await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
         }
         catch (Exception ex)
         {

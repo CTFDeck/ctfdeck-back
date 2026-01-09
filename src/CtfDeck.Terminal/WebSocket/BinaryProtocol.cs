@@ -1,22 +1,178 @@
+using System.Buffers;
 using System.Text;
 
 namespace CtfDeck.Terminal.WebSocket;
 
 /// <summary>
-/// Message types for the binary protocol
+/// High-performance binary protocol using ArrayPool to minimize allocations
 /// </summary>
 public enum MessageType : byte
 {
-    /// <summary>Legacy complete response (backward compatible)</summary>
     CompleteResponse = 0,
-    /// <summary>Streaming output chunk (stdout)</summary>
     StreamOutput = 1,
-    /// <summary>Streaming error chunk (stderr)</summary>
     StreamError = 2,
-    /// <summary>Stream completed with exit code and working directory</summary>
     StreamEnd = 3
 }
 
+/// <summary>
+/// High-performance WebSocket command deserialization
+/// </summary>
+public readonly ref struct WebSocketCommandReader
+{
+    public readonly int CommandLength;
+    public readonly ReadOnlySpan<byte> CommandBytes;
+    public readonly Guid MessageId;
+
+    public WebSocketCommandReader(ReadOnlySpan<byte> data)
+    {
+        CommandLength = BitConverter.ToInt32(data[..4]);
+        CommandBytes = data.Slice(4, CommandLength);
+        MessageId = new Guid(data.Slice(4 + CommandLength, 16));
+    }
+
+    public string GetCommand() => Encoding.UTF8.GetString(CommandBytes);
+}
+
+/// <summary>
+/// Pooled buffer writer for high-performance serialization
+/// </summary>
+public sealed class PooledBufferWriter : IDisposable
+{
+    private byte[] _buffer;
+    private int _position;
+    private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
+
+    public PooledBufferWriter(int initialCapacity = 4096)
+    {
+        _buffer = Pool.Rent(initialCapacity);
+        _position = 0;
+    }
+
+    public int Length => _position;
+    public ReadOnlySpan<byte> WrittenSpan => _buffer.AsSpan(0, _position);
+    public ReadOnlyMemory<byte> WrittenMemory => _buffer.AsMemory(0, _position);
+
+    public void WriteByte(byte value)
+    {
+        EnsureCapacity(1);
+        _buffer[_position++] = value;
+    }
+
+    public void WriteInt32(int value)
+    {
+        EnsureCapacity(4);
+        BitConverter.TryWriteBytes(_buffer.AsSpan(_position), value);
+        _position += 4;
+    }
+
+    public void WriteGuid(Guid value)
+    {
+        EnsureCapacity(16);
+        value.TryWriteBytes(_buffer.AsSpan(_position));
+        _position += 16;
+    }
+
+    public void WriteString(string value)
+    {
+        var byteCount = Encoding.UTF8.GetByteCount(value);
+        WriteInt32(byteCount);
+        EnsureCapacity(byteCount);
+        Encoding.UTF8.GetBytes(value, _buffer.AsSpan(_position));
+        _position += byteCount;
+    }
+
+    public void WriteBytes(ReadOnlySpan<byte> bytes)
+    {
+        EnsureCapacity(bytes.Length);
+        bytes.CopyTo(_buffer.AsSpan(_position));
+        _position += bytes.Length;
+    }
+
+    private void EnsureCapacity(int additionalBytes)
+    {
+        var required = _position + additionalBytes;
+        if (required <= _buffer.Length) return;
+
+        var newSize = Math.Max(_buffer.Length * 2, required);
+        var newBuffer = Pool.Rent(newSize);
+        _buffer.AsSpan(0, _position).CopyTo(newBuffer);
+        Pool.Return(_buffer);
+        _buffer = newBuffer;
+    }
+
+    /// <summary>
+    /// Gets the written data as a new array (for final send)
+    /// </summary>
+    public byte[] ToArray()
+    {
+        var result = new byte[_position];
+        _buffer.AsSpan(0, _position).CopyTo(result);
+        return result;
+    }
+
+    public void Reset() => _position = 0;
+
+    public void Dispose()
+    {
+        Pool.Return(_buffer);
+        _buffer = Array.Empty<byte>();
+    }
+}
+
+/// <summary>
+/// High-performance message serializers using pooled buffers
+/// </summary>
+public static class BinaryProtocolSerializer
+{
+    /// <summary>
+    /// Serialize a streaming output chunk
+    /// </summary>
+    public static byte[] SerializeStreamChunk(MessageType type, Guid messageId, string data)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)type);
+        writer.WriteGuid(messageId);
+        writer.WriteString(data);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Serialize a stream end message
+    /// </summary>
+    public static byte[] SerializeStreamEnd(Guid messageId, int exitCode, string workingDirectory)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.StreamEnd);
+        writer.WriteGuid(messageId);
+        writer.WriteInt32(exitCode);
+        writer.WriteString(workingDirectory);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Serialize a complete response (for cd and simple commands)
+    /// </summary>
+    public static byte[] SerializeCompleteResponse(
+        Guid messageId, 
+        int exitCode, 
+        string output, 
+        string error, 
+        string workingDirectory)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.CompleteResponse);
+        writer.WriteInt32(exitCode);
+        writer.WriteString(output);
+        writer.WriteString(error);
+        writer.WriteString(workingDirectory);
+        writer.WriteGuid(messageId);
+        return writer.ToArray();
+    }
+}
+
+/// <summary>
+/// Legacy structs for backward compatibility - delegates to optimized implementations
+/// </summary>
 public struct WebSocketCommand
 {
     public int CommandLength;
@@ -25,129 +181,27 @@ public struct WebSocketCommand
 
     public string Command => Encoding.UTF8.GetString(CommandBytes);
 
-    public static WebSocketCommand FromCommand(string command, Guid messageId)
-    {
-        var commandBytes = Encoding.UTF8.GetBytes(command);
-        return new WebSocketCommand
-        {
-            CommandLength = commandBytes.Length,
-            CommandBytes = commandBytes,
-            MessageId = messageId
-        };
-    }
-
-    public byte[] Serialize()
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-
-        writer.Write(CommandLength);
-        writer.Write(CommandBytes);
-        writer.Write(MessageId.ToByteArray());
-
-        return stream.ToArray();
-    }
-
     public static WebSocketCommand Deserialize(byte[] data)
     {
-        using var stream = new MemoryStream(data);
-        using var reader = new BinaryReader(stream);
-
-        var commandLength = reader.ReadInt32();
-        var commandBytes = reader.ReadBytes(commandLength);
-        var messageIdBytes = reader.ReadBytes(16);
-
+        var reader = new WebSocketCommandReader(data);
         return new WebSocketCommand
         {
-            CommandLength = commandLength,
-            CommandBytes = commandBytes,
-            MessageId = new Guid(messageIdBytes)
-        };
-    }
-}
-
-/// <summary>
-/// Streaming output chunk message
-/// </summary>
-public struct StreamChunkMessage
-{
-    public MessageType Type;
-    public Guid MessageId;
-    public int DataLength;
-    public byte[] DataBytes;
-
-    public string Data => Encoding.UTF8.GetString(DataBytes);
-
-    public static StreamChunkMessage FromData(MessageType type, string data, Guid messageId)
-    {
-        var dataBytes = Encoding.UTF8.GetBytes(data);
-        return new StreamChunkMessage
-        {
-            Type = type,
-            MessageId = messageId,
-            DataLength = dataBytes.Length,
-            DataBytes = dataBytes
+            CommandLength = reader.CommandLength,
+            CommandBytes = reader.CommandBytes.ToArray(),
+            MessageId = reader.MessageId
         };
     }
 
     public byte[] Serialize()
     {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-
-        writer.Write((byte)Type);
-        writer.Write(MessageId.ToByteArray());
-        writer.Write(DataLength);
-        writer.Write(DataBytes);
-
-        return stream.ToArray();
+        using var writer = new PooledBufferWriter();
+        writer.WriteInt32(CommandLength);
+        writer.WriteBytes(CommandBytes);
+        writer.WriteGuid(MessageId);
+        return writer.ToArray();
     }
 }
 
-/// <summary>
-/// Stream end message with exit code and working directory
-/// </summary>
-public struct StreamEndMessage
-{
-    public MessageType Type;
-    public Guid MessageId;
-    public int ExitCode;
-    public int WorkingDirectoryLength;
-    public byte[] WorkingDirectoryBytes;
-
-    public string WorkingDirectory => Encoding.UTF8.GetString(WorkingDirectoryBytes);
-
-    public static StreamEndMessage FromResult(int exitCode, string workingDirectory, Guid messageId)
-    {
-        var workingDirectoryBytes = Encoding.UTF8.GetBytes(workingDirectory);
-        return new StreamEndMessage
-        {
-            Type = MessageType.StreamEnd,
-            MessageId = messageId,
-            ExitCode = exitCode,
-            WorkingDirectoryLength = workingDirectoryBytes.Length,
-            WorkingDirectoryBytes = workingDirectoryBytes
-        };
-    }
-
-    public byte[] Serialize()
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-
-        writer.Write((byte)Type);
-        writer.Write(MessageId.ToByteArray());
-        writer.Write(ExitCode);
-        writer.Write(WorkingDirectoryLength);
-        writer.Write(WorkingDirectoryBytes);
-
-        return stream.ToArray();
-    }
-}
-
-/// <summary>
-/// Legacy complete response (kept for backward compatibility and simple commands like cd)
-/// </summary>
 public struct WebSocketResponse
 {
     public int ExitCode;
@@ -182,38 +236,15 @@ public struct WebSocketResponse
         };
     }
 
-    public static WebSocketResponse MockResponse(Guid messageId)
-    {
-        return FromResult(0, "Mock response from WebSocket server", "", Environment.CurrentDirectory, messageId);
-    }
-
-    public byte[] Serialize()
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-
-        // Write message type first (0 = CompleteResponse for backward compatibility)
-        writer.Write((byte)MessageType.CompleteResponse);
-        writer.Write(ExitCode);
-        writer.Write(OutputLength);
-        writer.Write(OutputBytes);
-        writer.Write(ErrorLength);
-        writer.Write(ErrorBytes);
-        writer.Write(WorkingDirectoryLength);
-        writer.Write(WorkingDirectoryBytes);
-        writer.Write(MessageId.ToByteArray());
-
-        return stream.ToArray();
-    }
+    public byte[] Serialize() => 
+        BinaryProtocolSerializer.SerializeCompleteResponse(MessageId, ExitCode, Output, Error, WorkingDirectory);
 
     public static WebSocketResponse Deserialize(byte[] data)
     {
         using var stream = new MemoryStream(data);
         using var reader = new BinaryReader(stream);
 
-        // Skip message type byte (already checked by caller or assume CompleteResponse)
         var messageType = reader.ReadByte();
-        
         var exitCode = reader.ReadInt32();
         var outputLength = reader.ReadInt32();
         var outputBytes = reader.ReadBytes(outputLength);
@@ -235,4 +266,58 @@ public struct WebSocketResponse
             MessageId = new Guid(messageIdBytes)
         };
     }
+
+    public static WebSocketResponse MockResponse(Guid messageId) =>
+        FromResult(0, "Mock response from WebSocket server", "", Environment.CurrentDirectory, messageId);
+}
+
+// Streaming message types (for high-perf serialization)
+public struct StreamChunkMessage
+{
+    public MessageType Type;
+    public Guid MessageId;
+    public int DataLength;
+    public byte[] DataBytes;
+
+    public string Data => Encoding.UTF8.GetString(DataBytes);
+
+    public static StreamChunkMessage FromData(MessageType type, string data, Guid messageId)
+    {
+        var dataBytes = Encoding.UTF8.GetBytes(data);
+        return new StreamChunkMessage
+        {
+            Type = type,
+            MessageId = messageId,
+            DataLength = dataBytes.Length,
+            DataBytes = dataBytes
+        };
+    }
+
+    public byte[] Serialize() => BinaryProtocolSerializer.SerializeStreamChunk(Type, MessageId, Data);
+}
+
+public struct StreamEndMessage
+{
+    public MessageType Type;
+    public Guid MessageId;
+    public int ExitCode;
+    public int WorkingDirectoryLength;
+    public byte[] WorkingDirectoryBytes;
+
+    public string WorkingDirectory => Encoding.UTF8.GetString(WorkingDirectoryBytes);
+
+    public static StreamEndMessage FromResult(int exitCode, string workingDirectory, Guid messageId)
+    {
+        var workingDirectoryBytes = Encoding.UTF8.GetBytes(workingDirectory);
+        return new StreamEndMessage
+        {
+            Type = MessageType.StreamEnd,
+            MessageId = messageId,
+            ExitCode = exitCode,
+            WorkingDirectoryLength = workingDirectoryBytes.Length,
+            WorkingDirectoryBytes = workingDirectoryBytes
+        };
+    }
+
+    public byte[] Serialize() => BinaryProtocolSerializer.SerializeStreamEnd(MessageId, ExitCode, WorkingDirectory);
 }
