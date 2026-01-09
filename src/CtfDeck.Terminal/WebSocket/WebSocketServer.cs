@@ -254,6 +254,7 @@ public class WebSocketServer
                     result.ExitCode,
                     result.Output,
                     result.Error,
+                    result.WorkingDirectory,
                     command.MessageId
                 );
             }
@@ -263,6 +264,7 @@ public class WebSocketServer
                     -1,
                     "",
                     "No terminal executor found for this client",
+                    Environment.CurrentDirectory,
                     command.MessageId
                 );
             }
@@ -286,6 +288,7 @@ public class WebSocketServer
                     -1,
                     "",
                     $"Error processing command: {ex.Message}",
+                    Environment.CurrentDirectory,
                     Guid.NewGuid());
 
                 var errorData = errorResponse.Serialize();

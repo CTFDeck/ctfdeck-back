@@ -58,15 +58,19 @@ public struct WebSocketResponse
     public byte[] OutputBytes;
     public int ErrorLength;
     public byte[] ErrorBytes;
+    public int WorkingDirectoryLength;
+    public byte[] WorkingDirectoryBytes;
     public Guid MessageId;
 
     public string Output => Encoding.UTF8.GetString(OutputBytes);
     public string Error => Encoding.UTF8.GetString(ErrorBytes);
+    public string WorkingDirectory => Encoding.UTF8.GetString(WorkingDirectoryBytes);
 
-    public static WebSocketResponse FromResult(int exitCode, string output, string error, Guid messageId)
+    public static WebSocketResponse FromResult(int exitCode, string output, string error, string workingDirectory, Guid messageId)
     {
         var outputBytes = Encoding.UTF8.GetBytes(output);
         var errorBytes = Encoding.UTF8.GetBytes(error);
+        var workingDirectoryBytes = Encoding.UTF8.GetBytes(workingDirectory);
 
         return new WebSocketResponse
         {
@@ -75,13 +79,15 @@ public struct WebSocketResponse
             OutputBytes = outputBytes,
             ErrorLength = errorBytes.Length,
             ErrorBytes = errorBytes,
+            WorkingDirectoryLength = workingDirectoryBytes.Length,
+            WorkingDirectoryBytes = workingDirectoryBytes,
             MessageId = messageId
         };
     }
 
     public static WebSocketResponse MockResponse(Guid messageId)
     {
-        return FromResult(0, "Mock response from WebSocket server", "", messageId);
+        return FromResult(0, "Mock response from WebSocket server", "", Environment.CurrentDirectory, messageId);
     }
 
     public byte[] Serialize()
@@ -94,6 +100,8 @@ public struct WebSocketResponse
         writer.Write(OutputBytes);
         writer.Write(ErrorLength);
         writer.Write(ErrorBytes);
+        writer.Write(WorkingDirectoryLength);
+        writer.Write(WorkingDirectoryBytes);
         writer.Write(MessageId.ToByteArray());
 
         return stream.ToArray();
@@ -109,6 +117,8 @@ public struct WebSocketResponse
         var outputBytes = reader.ReadBytes(outputLength);
         var errorLength = reader.ReadInt32();
         var errorBytes = reader.ReadBytes(errorLength);
+        var workingDirectoryLength = reader.ReadInt32();
+        var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
         var messageIdBytes = reader.ReadBytes(16);
 
         return new WebSocketResponse
@@ -118,6 +128,8 @@ public struct WebSocketResponse
             OutputBytes = outputBytes,
             ErrorLength = errorLength,
             ErrorBytes = errorBytes,
+            WorkingDirectoryLength = workingDirectoryLength,
+            WorkingDirectoryBytes = workingDirectoryBytes,
             MessageId = new Guid(messageIdBytes)
         };
     }
