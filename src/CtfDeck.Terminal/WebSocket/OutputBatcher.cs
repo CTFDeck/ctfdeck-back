@@ -84,7 +84,7 @@ public sealed class OutputBatcher : IAsyncDisposable
             // Initial consumption of whatever is ready
             while (_channel.Reader.TryRead(out var item))
             {
-                 AppendToBatch(item.Data, item.IsError, stdout, stderr, ct);
+                AppendToBatch(item.Data, item.IsError, stdout, stderr, ct);
             }
 
             // Wait for more until timeout
@@ -93,7 +93,7 @@ public sealed class OutputBatcher : IAsyncDisposable
                 // Wait for data or timeout
                 if (!await _channel.Reader.WaitToReadAsync(batchCts.Token))
                 {
-                   return true; // Channel closed, process what we have
+                    return true; // Channel closed, process what we have
                 }
 
                 while (_channel.Reader.TryRead(out var item))
@@ -104,7 +104,7 @@ public sealed class OutputBatcher : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-             // Batch timeout or main cancellation
+            // Batch timeout or main cancellation
         }
 
         return true;

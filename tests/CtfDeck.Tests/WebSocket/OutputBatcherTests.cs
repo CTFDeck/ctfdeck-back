@@ -50,15 +50,15 @@ public class OutputBatcherTests
         // Act
         await batcher.EnqueueAsync("hello ", false);
         await batcher.EnqueueAsync("world", false);
-        
+
         // Wait for batch delay
         await Task.Delay(50);
-        
+
         await batcher.CompleteAsync(0, "/test");
 
         // Assert
         socket.SentMessages.Count.Should().BeGreaterThanOrEqualTo(2); // One for output, one for end
-        
+
         // Verify output message
         var outputMsg = socket.SentMessages.First(m => (MessageType)m.Data[0] == MessageType.StreamOutput);
         var chunk = StreamChunkMessage.Deserialize(outputMsg.Data);
@@ -84,7 +84,7 @@ public class OutputBatcherTests
         // Act
         await batcher.EnqueueAsync("out", false);
         await batcher.EnqueueAsync("err", true);
-        
+
         await Task.Delay(50);
         await batcher.CompleteAsync(0, "/test");
 
@@ -110,13 +110,13 @@ public class OutputBatcherTests
 
         // Act
         await batcher.EnqueueAsync(largeData, false);
-        
+
         // Wait a bit for processing
         await Task.Delay(100);
 
         // Assert
         var stdoutMsgs = socket.SentMessages.Where(m => (MessageType)m.Data[0] == MessageType.StreamOutput).ToList();
-        
+
         // Should have at least one message with data
         var combinedOutput = string.Join("", stdoutMsgs.Select(m => StreamChunkMessage.Deserialize(m.Data).Data));
         combinedOutput.Should().Be(largeData);
@@ -138,7 +138,7 @@ public class OutputBatcherTests
         var stdoutMsgs = socket.SentMessages.Where(m => (MessageType)m.Data[0] == MessageType.StreamOutput).ToList();
         stdoutMsgs.Should().ContainSingle();
         StreamChunkMessage.Deserialize(stdoutMsgs[0].Data).Data.Should().Be("final message");
-        
+
         var endMsgs = socket.SentMessages.Where(m => (MessageType)m.Data[0] == MessageType.StreamEnd).ToList();
         endMsgs.Should().ContainSingle();
     }

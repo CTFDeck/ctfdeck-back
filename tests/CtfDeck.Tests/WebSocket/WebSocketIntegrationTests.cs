@@ -76,7 +76,7 @@ public class WebSocketIntegrationTests : IDisposable
                 );
             }
         }
-        
+
         return new WebSocketResponse { MessageId = messageId };
     }
 
@@ -440,12 +440,14 @@ public class WebSocketIntegrationTests : IDisposable
 
         // Act
         await _server.StopAsync();
-        
+
         // Wait for client to detect closure
         var buffer = new byte[1024];
-        try {
+        try
+        {
             await client.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-        } catch (WebSocketException) { }
+        }
+        catch (WebSocketException) { }
 
         // Assert
         client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.Closed || s == WebSocketState.Aborted);
