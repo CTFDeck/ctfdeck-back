@@ -1,4 +1,4 @@
-using System.Buffers;
+     using System.Buffers;
 using System.Text;
 
 namespace CtfDeck.Terminal.WebSocket;
@@ -180,6 +180,8 @@ public struct WebSocketCommand
     public Guid MessageId;
 
     public string Command => Encoding.UTF8.GetString(CommandBytes);
+
+
 
     public static WebSocketCommand Deserialize(byte[] data)
     {

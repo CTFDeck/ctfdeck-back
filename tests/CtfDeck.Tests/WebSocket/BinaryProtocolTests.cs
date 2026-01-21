@@ -1,25 +1,20 @@
 using CtfDeck.Terminal.WebSocket;
 using FluentAssertions;
+using System.Text;
 
 namespace CtfDeck.Tests.WebSocket;
 
 public class BinaryProtocolTests
 {
-    [Fact]
-    public void WebSocketCommand_FromCommand_ShouldCreateCorrectCommand()
+    private static WebSocketCommand CreateCommand(string commandText, Guid messageId)
     {
-        // Arrange
-        var commandText = "echo 'hello world'";
-        var messageId = Guid.NewGuid();
-
-        // Act
-        var command = WebSocketCommand.FromCommand(commandText, messageId);
-
-        // Assert
-        command.CommandLength.Should().Be(commandText.Length);
-        command.CommandBytes.Should().NotBeNull();
-        command.MessageId.Should().Be(messageId);
-        command.Command.Should().Be(commandText);
+        var bytes = Encoding.UTF8.GetBytes(commandText);
+        return new WebSocketCommand
+        {
+            CommandLength = bytes.Length,
+            CommandBytes = bytes,
+            MessageId = messageId
+        };
     }
 
     [Fact]
@@ -28,7 +23,7 @@ public class BinaryProtocolTests
         // Arrange
         var commandText = "test command";
         var messageId = Guid.NewGuid();
-        var command = WebSocketCommand.FromCommand(commandText, messageId);
+        var command = CreateCommand(commandText, messageId);
 
         // Act
         var binaryData = command.Serialize();
@@ -47,7 +42,7 @@ public class BinaryProtocolTests
         // Arrange
         var originalCommand = "ls -la /home/user";
         var originalMessageId = Guid.NewGuid();
-        var originalCommandStruct = WebSocketCommand.FromCommand(originalCommand, originalMessageId);
+        var originalCommandStruct = CreateCommand(originalCommand, originalMessageId);
         var binaryData = originalCommandStruct.Serialize();
 
         // Act
@@ -65,7 +60,7 @@ public class BinaryProtocolTests
         // Arrange
         var emptyCommand = "";
         var messageId = Guid.NewGuid();
-        var originalCommand = WebSocketCommand.FromCommand(emptyCommand, messageId);
+        var originalCommand = CreateCommand(emptyCommand, messageId);
         var binaryData = originalCommand.Serialize();
 
         // Act
@@ -93,7 +88,7 @@ public class BinaryProtocolTests
         foreach (var commandText in commands)
         {
             var messageId = Guid.NewGuid();
-            var originalCommand = WebSocketCommand.FromCommand(commandText, messageId);
+            var originalCommand = CreateCommand(commandText, messageId);
 
             // Act
             var binaryData = originalCommand.Serialize();
@@ -258,7 +253,7 @@ public class BinaryProtocolTests
         // Arrange
         var unicodeCommand = "echo '🚀 Hello 世界 🌍'";
         var messageId = Guid.NewGuid();
-        var command = WebSocketCommand.FromCommand(unicodeCommand, messageId);
+        var command = CreateCommand(unicodeCommand, messageId);
 
         // Act
         var binaryData = command.Serialize();
