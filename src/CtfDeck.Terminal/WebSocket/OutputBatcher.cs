@@ -58,8 +58,10 @@ public sealed class OutputBatcher : IAsyncDisposable
                 stdoutBatch.Clear();
                 stderrBatch.Clear();
 
-                await CollectBatchAsync(stdoutBatch, stderrBatch, ct);
-                await FlushRemainingAsync(stdoutBatch, stderrBatch, ct);
+                if (await CollectBatchAsync(stdoutBatch, stderrBatch, ct))
+                {
+                    await FlushRemainingAsync(stdoutBatch, stderrBatch, ct);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -72,30 +74,40 @@ public sealed class OutputBatcher : IAsyncDisposable
         }
     }
 
-    private async Task CollectBatchAsync(StringBuilder stdout, StringBuilder stderr, CancellationToken ct)
+    private async Task<bool> CollectBatchAsync(StringBuilder stdout, StringBuilder stderr, CancellationToken ct)
     {
         using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         batchCts.CancelAfter(BatchDelayMs);
 
         try
         {
+            // Initial consumption of whatever is ready
+            while (_channel.Reader.TryRead(out var item))
+            {
+                 AppendToBatch(item.Data, item.IsError, stdout, stderr, ct);
+            }
+
+            // Wait for more until timeout
             while (!batchCts.Token.IsCancellationRequested)
             {
+                // Wait for data or timeout
+                if (!await _channel.Reader.WaitToReadAsync(batchCts.Token))
+                {
+                   return true; // Channel closed, process what we have
+                }
+
                 while (_channel.Reader.TryRead(out var item))
                 {
                     AppendToBatch(item.Data, item.IsError, stdout, stderr, ct);
                 }
-
-                if (!await _channel.Reader.WaitToReadAsync(batchCts.Token))
-                {
-                    break; 
-                }
             }
         }
-        catch (OperationCanceledException) when (batchCts.Token.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            // Timeout reached, just return
+             // Batch timeout or main cancellation
         }
+
+        return true;
     }
 
     private void AppendToBatch(string data, bool isError, StringBuilder stdout, StringBuilder stderr, CancellationToken ct)
