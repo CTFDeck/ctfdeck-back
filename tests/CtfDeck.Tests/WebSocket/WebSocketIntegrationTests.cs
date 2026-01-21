@@ -34,7 +34,7 @@ public class WebSocketIntegrationTests : IDisposable
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
         var buffer = new byte[1024 * 32];
-        var response = new WebSocketResponse();
+
         var messageId = Guid.Empty;
 
         while (true)
