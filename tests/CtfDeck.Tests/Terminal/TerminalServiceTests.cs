@@ -21,7 +21,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        Assert.Contains("$", outputString);
+        Assert.Contains(GetExpectedPromptSymbol(), outputString);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        Assert.Contains("$", outputString);
+        Assert.Contains(GetExpectedPromptSymbol(), outputString);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        Assert.Contains("$", outputString);
+        Assert.Contains(GetExpectedPromptSymbol(), outputString);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        var promptCount = outputString.Split('$').Length - 1;
+        var promptCount = outputString.Split(GetExpectedPromptSymbol()).Length - 1;
         Assert.True(promptCount >= 2);
     }
 
@@ -115,7 +115,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        Assert.Contains("$", outputString);
+        Assert.Contains(GetExpectedPromptSymbol(), outputString);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        var promptCount = outputString.Split('$').Length - 1;
+        var promptCount = outputString.Split(GetExpectedPromptSymbol()).Length - 1;
         Assert.True(promptCount >= 2);
     }
 
@@ -159,7 +159,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        Assert.Contains("$", outputString);
+        Assert.Contains(GetExpectedPromptSymbol(), outputString);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class TerminalServiceTests
         await service.RunAsync();
 
         var outputString = output.ToString();
-        Assert.Contains("$", outputString);
+        Assert.Contains(GetExpectedPromptSymbol(), outputString);
     }
 
     [Fact]

@@ -29,6 +29,57 @@ public class WebSocketIntegrationTests : IDisposable
         }
     }
 
+    private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct)
+    {
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var buffer = new byte[1024 * 32];
+        var response = new WebSocketResponse();
+        var messageId = Guid.Empty;
+
+        while (true)
+        {
+            var result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+
+            // Copy relevant bytes
+            var data = new byte[result.Count];
+            Array.Copy(buffer, data, result.Count);
+
+            var type = (MessageType)data[0];
+
+            if (type == MessageType.CompleteResponse)
+            {
+                return WebSocketResponse.Deserialize(data);
+            }
+            else if (type == MessageType.StreamOutput)
+            {
+                var chunk = StreamChunkMessage.Deserialize(data);
+                stdout.Append(chunk.Data);
+                messageId = chunk.MessageId;
+            }
+            else if (type == MessageType.StreamError)
+            {
+                var chunk = StreamChunkMessage.Deserialize(data);
+                stderr.Append(chunk.Data);
+                messageId = chunk.MessageId;
+            }
+            else if (type == MessageType.StreamEnd)
+            {
+                var endMsg = StreamEndMessage.Deserialize(data);
+                return WebSocketResponse.FromResult(
+                    endMsg.ExitCode,
+                    stdout.ToString(),
+                    stderr.ToString(),
+                    endMsg.WorkingDirectory,
+                    endMsg.MessageId
+                );
+            }
+        }
+        
+        return new WebSocketResponse { MessageId = messageId };
+    }
+
     [Fact]
     public async Task ClientConnection_ShouldConnectAndDisconnectSuccessfully()
     {
@@ -88,19 +139,9 @@ public class WebSocketIntegrationTests : IDisposable
                 true,
                 CancellationToken.None);
 
-            var responseBuffer = new byte[1024 * 4];
-            var responseResult = await client.ReceiveAsync(
-                new ArraySegment<byte>(responseBuffer),
-                CancellationToken.None);
+            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
 
             // Assert
-            responseResult.MessageType.Should().Be(WebSocketMessageType.Binary);
-            responseResult.EndOfMessage.Should().BeTrue();
-
-            var responseData = new byte[responseResult.Count];
-            Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-            var response = WebSocketResponse.Deserialize(responseData);
             response.MessageId.Should().Be(messageId);
             response.ExitCode.Should().Be(0);
             response.Output.Should().Contain("hello world");
@@ -196,15 +237,7 @@ public class WebSocketIntegrationTests : IDisposable
                     true,
                     CancellationToken.None);
 
-                var responseBuffer = new byte[1024 * 4];
-                var responseResult = await client.ReceiveAsync(
-                    new ArraySegment<byte>(responseBuffer),
-                    CancellationToken.None);
-
-                var responseData = new byte[responseResult.Count];
-                Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-                var response = WebSocketResponse.Deserialize(responseData);
+                var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
                 responses.Add(response);
             }
 
@@ -213,7 +246,6 @@ public class WebSocketIntegrationTests : IDisposable
             foreach (var response in responses)
             {
                 // Commands are executed for real, so we just verify they complete successfully
-                // pwd and whoami should always succeed, ls may fail if directory is empty but exit code should be 0
                 response.ExitCode.Should().BeGreaterThanOrEqualTo(0);
             }
         }
@@ -335,18 +367,9 @@ public class WebSocketIntegrationTests : IDisposable
                 true,
                 CancellationToken.None);
 
-            var responseBuffer = new byte[1024 * 4];
-            var responseResult = await client.ReceiveAsync(
-                new ArraySegment<byte>(responseBuffer),
-                CancellationToken.None);
+            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
 
             // Assert
-            responseResult.MessageType.Should().Be(WebSocketMessageType.Binary);
-
-            var responseData = new byte[responseResult.Count];
-            Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-            var response = WebSocketResponse.Deserialize(responseData);
             response.MessageId.Should().Be(messageId);
             response.ExitCode.Should().Be(0);
         }
@@ -391,18 +414,9 @@ public class WebSocketIntegrationTests : IDisposable
                 true,
                 CancellationToken.None);
 
-            var responseBuffer = new byte[1024 * 8]; // Larger buffer for response
-            var responseResult = await client.ReceiveAsync(
-                new ArraySegment<byte>(responseBuffer),
-                CancellationToken.None);
+            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
 
             // Assert
-            responseResult.MessageType.Should().Be(WebSocketMessageType.Binary);
-
-            var responseData = new byte[responseResult.Count];
-            Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-            var response = WebSocketResponse.Deserialize(responseData);
             response.MessageId.Should().Be(messageId);
             response.ExitCode.Should().Be(0);
             response.Output.Should().Contain(new string('a', 500));
