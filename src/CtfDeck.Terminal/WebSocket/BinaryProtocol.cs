@@ -181,6 +181,8 @@ public struct WebSocketCommand
 
     public string Command => Encoding.UTF8.GetString(CommandBytes);
 
+
+
     public static WebSocketCommand Deserialize(byte[] data)
     {
         var reader = new WebSocketCommandReader(data);
@@ -294,6 +296,22 @@ public struct StreamChunkMessage
     }
 
     public byte[] Serialize() => BinaryProtocolSerializer.SerializeStreamChunk(Type, MessageId, Data);
+
+    public static StreamChunkMessage Deserialize(byte[] data)
+    {
+        var type = (MessageType)data[0];
+        var messageId = new Guid(data.AsSpan(1, 16));
+        var dataLength = BitConverter.ToInt32(data.AsSpan(17, 4));
+        var dataBytes = data.AsSpan(21, dataLength).ToArray();
+
+        return new StreamChunkMessage
+        {
+            Type = type,
+            MessageId = messageId,
+            DataLength = dataLength,
+            DataBytes = dataBytes
+        };
+    }
 }
 
 public struct StreamEndMessage
@@ -320,4 +338,23 @@ public struct StreamEndMessage
     }
 
     public byte[] Serialize() => BinaryProtocolSerializer.SerializeStreamEnd(MessageId, ExitCode, WorkingDirectory);
+
+    public static StreamEndMessage Deserialize(byte[] data)
+    {
+        // Structure: [Type 1] + [Guid 16] + [ExitCode 4] + [WdLen 4] + [WdBytes...]
+        var type = (MessageType)data[0];
+        var messageId = new Guid(data.AsSpan(1, 16));
+        var exitCode = BitConverter.ToInt32(data.AsSpan(17, 4));
+        var wdLength = BitConverter.ToInt32(data.AsSpan(21, 4));
+        var wdBytes = data.AsSpan(25, wdLength).ToArray();
+
+        return new StreamEndMessage
+        {
+            Type = type,
+            MessageId = messageId,
+            ExitCode = exitCode,
+            WorkingDirectoryLength = wdLength,
+            WorkingDirectoryBytes = wdBytes
+        };
+    }
 }

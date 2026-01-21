@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using System.Net.WebSockets;
+using System.Text;
 
 namespace CtfDeck.Terminal.WebSocket;
 
@@ -47,74 +48,87 @@ public sealed class OutputBatcher : IAsyncDisposable
 
     private async Task ProcessBatchesAsync(CancellationToken ct)
     {
-        var reader = _channel.Reader;
-        var stdoutBatch = new System.Text.StringBuilder(MaxBatchSize);
-        var stderrBatch = new System.Text.StringBuilder(MaxBatchSize);
+        var stdoutBatch = new StringBuilder(MaxBatchSize);
+        var stderrBatch = new StringBuilder(MaxBatchSize);
 
         try
         {
-            while (!ct.IsCancellationRequested)
+            while (await _channel.Reader.WaitToReadAsync(ct))
             {
-                // Wait for first item
-                if (!await reader.WaitToReadAsync(ct))
-                    break;
-
                 stdoutBatch.Clear();
                 stderrBatch.Clear();
 
-                // Collect items for batch (with timeout)
-                using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                batchCts.CancelAfter(BatchDelayMs);
-
-                try
+                if (await CollectBatchAsync(stdoutBatch, stderrBatch, ct))
                 {
-                    while (reader.TryRead(out var item))
-                    {
-                        var batch = item.IsError ? stderrBatch : stdoutBatch;
-                        batch.Append(item.Data);
-
-                        // Force send if batch is large
-                        if (batch.Length >= MaxBatchSize)
-                        {
-                            await FlushBatchAsync(batch, item.IsError, ct);
-                            batch.Clear();
-                        }
-                    }
-
-                    // Wait a tiny bit more for additional items
-                    while (!batchCts.Token.IsCancellationRequested &&
-                           await reader.WaitToReadAsync(batchCts.Token))
-                    {
-                        while (reader.TryRead(out var item))
-                        {
-                            var batch = item.IsError ? stderrBatch : stdoutBatch;
-                            batch.Append(item.Data);
-
-                            if (batch.Length >= MaxBatchSize)
-                            {
-                                await FlushBatchAsync(batch, item.IsError, ct);
-                                batch.Clear();
-                            }
-                        }
-                    }
+                    await FlushRemainingAsync(stdoutBatch, stderrBatch, ct);
                 }
-                catch (OperationCanceledException) when (batchCts.Token.IsCancellationRequested)
-                {
-                    // Batch timeout - flush what we have
-                }
-
-                // Send any remaining batched data
-                if (stdoutBatch.Length > 0)
-                    await FlushBatchAsync(stdoutBatch, false, ct);
-                if (stderrBatch.Length > 0)
-                    await FlushBatchAsync(stderrBatch, true, ct);
             }
         }
-        catch (OperationCanceledException) { }
-        catch (WebSocketException) { }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (WebSocketException)
+        {
+            // Client disconnected
+        }
     }
 
-    private async Task FlushBatchAsync(System.Text.StringBuilder batch, bool isError, CancellationToken ct)
+    private async Task<bool> CollectBatchAsync(StringBuilder stdout, StringBuilder stderr, CancellationToken ct)
+    {
+        using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        batchCts.CancelAfter(BatchDelayMs);
+
+        try
+        {
+            // Initial consumption of whatever is ready
+            while (_channel.Reader.TryRead(out var item))
+            {
+                AppendToBatch(item.Data, item.IsError, stdout, stderr, ct);
+            }
+
+            // Wait for more until timeout
+            while (!batchCts.Token.IsCancellationRequested)
+            {
+                // Wait for data or timeout
+                if (!await _channel.Reader.WaitToReadAsync(batchCts.Token))
+                {
+                    return true; // Channel closed, process what we have
+                }
+
+                while (_channel.Reader.TryRead(out var item))
+                {
+                    AppendToBatch(item.Data, item.IsError, stdout, stderr, ct);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Batch timeout or main cancellation
+        }
+
+        return true;
+    }
+
+    private void AppendToBatch(string data, bool isError, StringBuilder stdout, StringBuilder stderr, CancellationToken ct)
+    {
+        var batch = isError ? stderr : stdout;
+        batch.Append(data);
+
+        if (batch.Length >= MaxBatchSize)
+        {
+            _ = FlushBatchAsync(batch, isError, ct);
+            batch.Clear();
+        }
+    }
+
+    private async Task FlushRemainingAsync(StringBuilder stdout, StringBuilder stderr, CancellationToken ct)
+    {
+        if (stdout.Length > 0) await FlushBatchAsync(stdout, false, ct);
+        if (stderr.Length > 0) await FlushBatchAsync(stderr, true, ct);
+    }
+
+    private async Task FlushBatchAsync(StringBuilder batch, bool isError, CancellationToken ct)
     {
         if (batch.Length == 0 || _socket.State != WebSocketState.Open)
             return;
@@ -131,15 +145,8 @@ public sealed class OutputBatcher : IAsyncDisposable
     public async Task CompleteAsync(int exitCode, string workingDirectory)
     {
         _channel.Writer.Complete();
+        await _processingTask;
 
-        try
-        {
-            // Wait for processing to finish
-            await _processingTask;
-        }
-        catch { }
-
-        // Send stream end
         if (_socket.State == WebSocketState.Open)
         {
             var data = BinaryProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
@@ -156,7 +163,7 @@ public sealed class OutputBatcher : IAsyncDisposable
         {
             await _processingTask;
         }
-        catch { }
+        catch (OperationCanceledException) { }
 
         _cts.Dispose();
     }

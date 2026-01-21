@@ -56,98 +56,61 @@ public class WebSocketServer
         if (!_isRunning)
             return;
 
-        try
+        _cancellationTokenSource.Cancel();
+        _httpListener.Stop();
+        _isRunning = false;
+
+        if (_listenerTask != null)
         {
-            _cancellationTokenSource.Cancel();
-
-            _httpListener.Stop();
-            _isRunning = false;
-
-            if (_listenerTask != null)
-            {
-                try
-                {
-                    await Task.WhenAny(_listenerTask, Task.Delay(2000));
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Warning: Error waiting for listener task: {ex.Message}");
-                }
-            }
-
-            var closeTasks = new List<Task>();
-            foreach (var client in _connectedClients.Values)
-            {
-                if (client.State == WebSocketState.Open)
-                {
-                    closeTasks.Add(client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None));
-                }
-            }
-
-            if (closeTasks.Count > 0)
-            {
-                try
-                {
-                    await Task.WhenAll(closeTasks);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Warning: Error closing client connections: {ex.Message}");
-                }
-            }
-
-            _connectedClients.Clear();
-            Console.WriteLine("WebSocket server stopped successfully.");
+            // Wait for listener to complete gracefully
+            await Task.WhenAny(_listenerTask, Task.Delay(2000));
         }
-        catch (Exception ex)
+
+        var closeTasks = _connectedClients.Values
+            .Where(client => client.State == WebSocketState.Open)
+            .Select(client => client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None))
+            .ToList();
+
+        if (closeTasks.Count > 0)
         {
-            Console.WriteLine($"Error during server shutdown: {ex.Message}");
+            await Task.WhenAll(closeTasks);
         }
+
+        _connectedClients.Clear();
+        Console.WriteLine("WebSocket server stopped successfully.");
     }
 
     private async Task ListenForConnectionsAsync(CancellationToken cancellationToken)
     {
-        try
+        while (!cancellationToken.IsCancellationRequested && _isRunning)
         {
-            while (!cancellationToken.IsCancellationRequested && _isRunning)
-            {
-                try
-                {
-                    var context = await _httpListener.GetContextAsync();
+            var context = await AcceptContextAsync(cancellationToken);
+            if (context == null) break;
 
-                    if (context.Request.IsWebSocketRequest)
-                    {
-                        _ = Task.Run(() => HandleWebSocketConnectionAsync(context), cancellationToken);
-                    }
-                    else
-                    {
-                        context.Response.StatusCode = 400;
-                        context.Response.Close();
-                    }
-                }
-                catch (HttpListenerException) when (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        Console.WriteLine($"Error accepting connection: {ex.Message}");
-                    }
-                }
+            if (context.Request.IsWebSocketRequest)
+            {
+                _ = Task.Run(() => HandleWebSocketConnectionAsync(context), cancellationToken);
+            }
+            else
+            {
+                context.Response.Close();
             }
         }
-        catch (Exception ex) when (!(ex is OperationCanceledException))
+    }
+
+    private async Task<HttpListenerContext?> AcceptContextAsync(CancellationToken ct)
+    {
+        try
         {
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                Console.WriteLine($"Error in connection listener: {ex.Message}");
-            }
+            return await _httpListener.GetContextAsync();
+        }
+        catch (HttpListenerException) when (ct.IsCancellationRequested || !_isRunning)
+        {
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
         }
     }
 
@@ -186,17 +149,10 @@ public class WebSocketServer
 
             if (webSocketContext?.WebSocket.State == WebSocketState.Open)
             {
-                try
-                {
-                    await webSocketContext.WebSocket.CloseAsync(
-                        WebSocketCloseStatus.NormalClosure,
-                        "Connection closed",
-                        CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error closing WebSocket for client {clientId}: {ex.Message}");
-                }
+                await webSocketContext.WebSocket.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    "Connection closed",
+                    CancellationToken.None);
             }
 
             Console.WriteLine($"Client {clientId} disconnected");
@@ -244,73 +200,50 @@ public class WebSocketServer
     /// </summary>
     private async Task ProcessBinaryMessageStreaming(WsClient webSocket, byte[] buffer, int messageLength, string clientId)
     {
-        try
+        var messageData = new byte[messageLength];
+        Array.Copy(buffer, messageData, messageLength);
+
+        var command = WebSocketCommand.Deserialize(messageData);
+
+        Console.WriteLine($"Client {clientId} sent command: '{command.Command}' (ID: {command.MessageId})");
+
+        if (!_clientExecutors.TryGetValue(clientId, out var executor))
         {
-            var messageData = new byte[messageLength];
-            Array.Copy(buffer, messageData, messageLength);
-
-            var command = WebSocketCommand.Deserialize(messageData);
-
-            Console.WriteLine($"Client {clientId} sent command: '{command.Command}' (ID: {command.MessageId})");
-
-            if (!_clientExecutors.TryGetValue(clientId, out var executor))
-            {
-                var errorResponse = WebSocketResponse.FromResult(
-                    -1,
-                    "",
-                    "No terminal executor found for this client",
-                    Environment.CurrentDirectory,
-                    command.MessageId);
-                await SendBinaryAsync(webSocket, errorResponse.Serialize());
-                return;
-            }
-
-            // Check if this is a simple command that doesn't need streaming (cd, pwd, etc.)
-            var trimmedCommand = command.Command.Trim();
-            if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
-            {
-                // Use non-streaming for cd
-                var result = await executor.ExecuteAsync(command.Command);
-                var response = WebSocketResponse.FromResult(
-                    result.ExitCode,
-                    result.Output,
-                    result.Error,
-                    result.WorkingDirectory,
-                    command.MessageId);
-                await SendBinaryAsync(webSocket, response.Serialize());
-                return;
-            }
-
-            // Use batched streaming for other commands (high-performance)
-            await using var batcher = new OutputBatcher(webSocket, command.MessageId);
-
-            var streamResult = await executor.ExecuteStreamingAsync(
-                command.Command,
-                (data, isError) => batcher.EnqueueAsync(data, isError).AsTask());
-
-            // Complete batching and send stream end
-            await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
+            var errorResponse = WebSocketResponse.FromResult(
+                -1,
+                "",
+                "No terminal executor found for this client",
+                Environment.CurrentDirectory,
+                command.MessageId);
+            await SendBinaryAsync(webSocket, errorResponse.Serialize());
+            return;
         }
-        catch (Exception ex)
+
+        // Check if this is a simple command that doesn't need streaming (cd, pwd, etc.)
+        var trimmedCommand = command.Command.Trim();
+        if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
         {
-            Console.WriteLine($"Error processing binary message from client {clientId}: {ex.Message}");
-
-            try
-            {
-                var errorResponse = WebSocketResponse.FromResult(
-                    -1,
-                    "",
-                    $"Error processing command: {ex.Message}",
-                    Environment.CurrentDirectory,
-                    Guid.NewGuid());
-
-                await SendBinaryAsync(webSocket, errorResponse.Serialize());
-            }
-            catch (Exception sendEx)
-            {
-                Console.WriteLine($"Failed to send error response to client {clientId}: {sendEx.Message}");
-            }
+            // Use non-streaming for cd
+            var result = await executor.ExecuteAsync(command.Command);
+            var response = WebSocketResponse.FromResult(
+                result.ExitCode,
+                result.Output,
+                result.Error,
+                result.WorkingDirectory,
+                command.MessageId);
+            await SendBinaryAsync(webSocket, response.Serialize());
+            return;
         }
+
+        // Use batched streaming for other commands (high-performance)
+        await using var batcher = new OutputBatcher(webSocket, command.MessageId);
+
+        var streamResult = await executor.ExecuteStreamingAsync(
+            command.Command,
+            (data, isError) => batcher.EnqueueAsync(data, isError).AsTask());
+
+        // Complete batching and send stream end
+        await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
     }
 
     private async Task SendBinaryAsync(WsClient webSocket, byte[] data)
