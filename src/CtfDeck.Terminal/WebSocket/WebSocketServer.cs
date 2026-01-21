@@ -84,25 +84,33 @@ public class WebSocketServer
     {
         while (!cancellationToken.IsCancellationRequested && _isRunning)
         {
-            try
-            {
-                var context = await _httpListener.GetContextAsync();
+            var context = await AcceptContextAsync(cancellationToken);
+            if (context == null) break;
 
-                if (context.Request.IsWebSocketRequest)
-                {
-                    _ = Task.Run(() => HandleWebSocketConnectionAsync(context), cancellationToken);
-                }
-            }
-            catch (HttpListenerException) when (cancellationToken.IsCancellationRequested || !_isRunning)
+            if (context.Request.IsWebSocketRequest)
             {
-                // Expected termination
-                break;
+                _ = Task.Run(() => HandleWebSocketConnectionAsync(context), cancellationToken);
             }
-            catch (ObjectDisposedException)
+            else
             {
-                // Listener was stopped
-                break;
+                context.Response.Close();
             }
+        }
+    }
+
+    private async Task<HttpListenerContext?> AcceptContextAsync(CancellationToken ct)
+    {
+        try
+        {
+            return await _httpListener.GetContextAsync();
+        }
+        catch (HttpListenerException) when (ct.IsCancellationRequested || !_isRunning)
+        {
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
         }
     }
 

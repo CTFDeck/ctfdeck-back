@@ -429,4 +429,43 @@ public class WebSocketIntegrationTests : IDisposable
             }
         }
     }
+
+    [Fact]
+    public async Task StopAsync_WithActiveClients_ShouldCloseClientsCorrectly()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var client = new ClientWebSocket();
+        await client.ConnectAsync(new Uri("ws://localhost:8095/"), CancellationToken.None);
+
+        // Act
+        await _server.StopAsync();
+        
+        // Wait for client to detect closure
+        var buffer = new byte[1024];
+        try {
+            await client.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+        } catch (WebSocketException) { }
+
+        // Assert
+        client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.Closed || s == WebSocketState.Aborted);
+        _server.ConnectedClientCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task NonWebSocketRequest_ShouldBeClosed()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var httpClient = new HttpClient();
+
+        // Act
+        // Send a regular HTTP GET request instead of a WebSocket upgrade
+        var response = await httpClient.GetAsync("http://localhost:8095/");
+
+        // Assert
+        // Since we call context.Response.Close() without setting status code, it might default to 200 or just terminate the connection.
+        // The important thing is that it finishes and doesn't hang.
+        response.IsSuccessStatusCode.Should().BeTrue();
+    }
 }
