@@ -72,7 +72,13 @@ public class WebSocketIntegrationTests : IDisposable
             // Create test command
             var command = "echo hello world";
             var messageId = Guid.NewGuid();
-            var commandStruct = WebSocketCommand.FromCommand(command, messageId);
+            var cmdBytes = Encoding.UTF8.GetBytes(command);
+            var commandStruct = new WebSocketCommand
+            {
+                CommandLength = cmdBytes.Length,
+                CommandBytes = cmdBytes,
+                MessageId = messageId
+            };
             var commandData = commandStruct.Serialize();
 
             // Act
@@ -175,7 +181,13 @@ public class WebSocketIntegrationTests : IDisposable
             foreach (var command in commands)
             {
                 var messageId = Guid.NewGuid();
-                var commandStruct = WebSocketCommand.FromCommand(command, messageId);
+                var cmdBytes = Encoding.UTF8.GetBytes(command);
+                var commandStruct = new WebSocketCommand
+                {
+                    CommandLength = cmdBytes.Length,
+                    CommandBytes = cmdBytes,
+                    MessageId = messageId
+                };
                 var commandData = commandStruct.Serialize();
 
                 await client.SendAsync(
@@ -307,7 +319,13 @@ public class WebSocketIntegrationTests : IDisposable
             // Create empty command
             var emptyCommand = "";
             var messageId = Guid.NewGuid();
-            var commandStruct = WebSocketCommand.FromCommand(emptyCommand, messageId);
+            var cmdBytes = Encoding.UTF8.GetBytes(emptyCommand);
+            var commandStruct = new WebSocketCommand
+            {
+                CommandLength = cmdBytes.Length,
+                CommandBytes = cmdBytes,
+                MessageId = messageId
+            };
             var commandData = commandStruct.Serialize();
 
             // Act
@@ -357,7 +375,13 @@ public class WebSocketIntegrationTests : IDisposable
             // Create a valid command with large output
             var largeCommand = "echo " + new string('a', 500);
             var messageId = Guid.NewGuid();
-            var commandStruct = WebSocketCommand.FromCommand(largeCommand, messageId);
+            var cmdBytes = Encoding.UTF8.GetBytes(largeCommand);
+            var commandStruct = new WebSocketCommand
+            {
+                CommandLength = cmdBytes.Length,
+                CommandBytes = cmdBytes,
+                MessageId = messageId
+            };
             var commandData = commandStruct.Serialize();
 
             // Act
