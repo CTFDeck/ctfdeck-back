@@ -1,144 +1,111 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-
 namespace CtfDeck.Terminal.Terminal;
 
-public class TerminalExecutor
+/// <summary>
+/// Delegate for streaming output events
+/// </summary>
+public delegate Task OutputReceivedHandler(string data, bool isError);
+
+/// <summary>
+/// Terminal executor that provides command execution with streaming output.
+/// This is the main entry point for terminal operations.
+/// </summary>
+public sealed class TerminalExecutor : IDisposable
 {
-    private string _currentDirectory;
+    private readonly DirectoryNavigator _navigator;
+    private ShellType _shellType = ShellType.Auto;
+    private bool _isDisposed;
 
-    public TerminalExecutor()
+    public string CurrentDirectory => _navigator.CurrentDirectory;
+    public bool IsBashAvailable => ShellDetector.IsBashAvailable;
+    public ShellType CurrentShell => ShellDetector.ResolveShellType(_shellType);
+
+    public TerminalExecutor() : this(null) { }
+
+    public TerminalExecutor(string? initialDirectory)
     {
-        _currentDirectory = Environment.CurrentDirectory;
+        _navigator = new DirectoryNavigator(initialDirectory);
     }
 
-    public async Task<CommandResult> ExecuteAsync(string command)
+    /// <summary>
+    /// Sets the preferred shell type
+    /// </summary>
+    public void SetShell(ShellType shellType)
+    {
+        _shellType = shellType;
+    }
+
+    /// <summary>
+    /// Executes a command with streaming output
+    /// </summary>
+    public Task<CommandResult> ExecuteStreamingAsync(
+        string command,
+        OutputReceivedHandler onOutput,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+        return CommandPreprocessor.IsDirectoryChangeCommand(command)
+            ? ExecuteCdAsync(command, onOutput)
+            : ExecuteShellCommandAsync(command, onOutput, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a command and returns the complete result (non-streaming)
+    /// </summary>
+    public async Task<CommandResult> ExecuteAsync(string command, CancellationToken cancellationToken = default)
+    {
+        // Use a simple callback that just accumulates output
+        return await ExecuteStreamingAsync(
+            command,
+            static (_, _) => Task.CompletedTask,
+            cancellationToken
+        );
+    }
+
+    /// <summary>
+    /// Gets a formatted prompt string for display
+    /// </summary>
+    public string GetPrompt() => _navigator.GetPrompt();
+
+    private async Task<CommandResult> ExecuteCdAsync(string command, OutputReceivedHandler onOutput)
+    {
+        var path = CommandPreprocessor.ExtractCdPath(command);
+        return await _navigator.ChangeDirectoryAsync(path, (data, isError) => onOutput(data, isError));
+    }
+
+    private async Task<CommandResult> ExecuteShellCommandAsync(
+        string command,
+        OutputReceivedHandler onOutput,
+        CancellationToken cancellationToken)
     {
         try
         {
-            string shell;
-            string shellArg;
+            var shell = ShellDetector.GetConfig(_shellType);
+            var preparedCommand = CommandPreprocessor.Prepare(command, CurrentShell);
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                shell = "cmd.exe";
-                shellArg = "/c";
-            }
-            else
-            {
-                shell = "/bin/bash";
-                shellArg = "-c";
-            }
-
-            if (command.Trim().StartsWith("cd "))
-            {
-                return HandleCdCommand(command);
-            }
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = shell,
-                Arguments = $"{shellArg} \"{command.Replace("\"", "\\\"")}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = _currentDirectory
-            };
-
-            startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH");
-
-            using var process = Process.Start(startInfo)!;
-
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-
-            await Task.WhenAll(outputTask, errorTask);
-
-            process.WaitForExit();
-
-            return new CommandResult
-            {
-                Output = outputTask.Result,
-                Error = errorTask.Result,
-                ExitCode = process.ExitCode,
-                WorkingDirectory = _currentDirectory
-            };
+            return await ProcessRunner.RunAsync(
+                shell,
+                preparedCommand,
+                _navigator.CurrentDirectory,
+                (data, isError) => onOutput(data, isError),
+                cancellationToken
+            );
         }
         catch (Exception ex)
         {
-            return new CommandResult
-            {
-                Output = "",
-                Error = $"Runtime error: {ex.Message}",
-                ExitCode = -1,
-                WorkingDirectory = _currentDirectory
-            };
+            return CommandResult.Failure(_navigator.CurrentDirectory, $"Execution error: {ex.Message}", -1);
         }
     }
 
-    private CommandResult HandleCdCommand(string command)
+    public void Dispose()
     {
-        try
-        {
-            var path = command.Substring(3).Trim();
-
-            if (string.IsNullOrEmpty(path) || path == "~")
-            {
-                path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            }
-            else if (!Path.IsPathRooted(path))
-            {
-                path = Path.Combine(_currentDirectory, path);
-            }
-
-            if (Directory.Exists(path))
-            {
-                _currentDirectory = Path.GetFullPath(path);
-                return new CommandResult
-                {
-                    Output = "",
-                    Error = "",
-                    ExitCode = 0,
-                    WorkingDirectory = _currentDirectory
-                };
-            }
-
-            return new CommandResult
-            {
-                Output = "",
-                Error = $"cd: {path}: No such file or directory",
-                ExitCode = 1,
-                WorkingDirectory = _currentDirectory
-            };
-        }
-        catch (Exception ex)
-        {
-            return new CommandResult
-            {
-                Output = "",
-                Error = $"cd: {ex.Message}",
-                ExitCode = 1,
-                WorkingDirectory = _currentDirectory
-            };
-        }
+        if (_isDisposed) return;
+        _isDisposed = true;
+        GC.SuppressFinalize(this);
     }
 
-    public string GetPrompt()
+    ~TerminalExecutor()
     {
-        var username = Environment.UserName;
-        var hostname = Environment.MachineName;
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var dir = _currentDirectory.Replace(home, "~");
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return $"{dir}> ";
-        }
-
-        var isRoot = username == "root";
-        var symbol = isRoot ? "#" : "$";
-        return $"{username}@{hostname}:{dir}{symbol} ";
+        Dispose();
     }
 }

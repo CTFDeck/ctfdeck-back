@@ -29,6 +29,57 @@ public class WebSocketIntegrationTests : IDisposable
         }
     }
 
+    private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct)
+    {
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var buffer = new byte[1024 * 32];
+
+        var messageId = Guid.Empty;
+
+        while (true)
+        {
+            var result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+
+            // Copy relevant bytes
+            var data = new byte[result.Count];
+            Array.Copy(buffer, data, result.Count);
+
+            var type = (MessageType)data[0];
+
+            if (type == MessageType.CompleteResponse)
+            {
+                return WebSocketResponse.Deserialize(data);
+            }
+            else if (type == MessageType.StreamOutput)
+            {
+                var chunk = StreamChunkMessage.Deserialize(data);
+                stdout.Append(chunk.Data);
+                messageId = chunk.MessageId;
+            }
+            else if (type == MessageType.StreamError)
+            {
+                var chunk = StreamChunkMessage.Deserialize(data);
+                stderr.Append(chunk.Data);
+                messageId = chunk.MessageId;
+            }
+            else if (type == MessageType.StreamEnd)
+            {
+                var endMsg = StreamEndMessage.Deserialize(data);
+                return WebSocketResponse.FromResult(
+                    endMsg.ExitCode,
+                    stdout.ToString(),
+                    stderr.ToString(),
+                    endMsg.WorkingDirectory,
+                    endMsg.MessageId
+                );
+            }
+        }
+
+        return new WebSocketResponse { MessageId = messageId };
+    }
+
     [Fact]
     public async Task ClientConnection_ShouldConnectAndDisconnectSuccessfully()
     {
@@ -72,7 +123,13 @@ public class WebSocketIntegrationTests : IDisposable
             // Create test command
             var command = "echo hello world";
             var messageId = Guid.NewGuid();
-            var commandStruct = WebSocketCommand.FromCommand(command, messageId);
+            var cmdBytes = Encoding.UTF8.GetBytes(command);
+            var commandStruct = new WebSocketCommand
+            {
+                CommandLength = cmdBytes.Length,
+                CommandBytes = cmdBytes,
+                MessageId = messageId
+            };
             var commandData = commandStruct.Serialize();
 
             // Act
@@ -82,19 +139,9 @@ public class WebSocketIntegrationTests : IDisposable
                 true,
                 CancellationToken.None);
 
-            var responseBuffer = new byte[1024 * 4];
-            var responseResult = await client.ReceiveAsync(
-                new ArraySegment<byte>(responseBuffer),
-                CancellationToken.None);
+            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
 
             // Assert
-            responseResult.MessageType.Should().Be(WebSocketMessageType.Binary);
-            responseResult.EndOfMessage.Should().BeTrue();
-
-            var responseData = new byte[responseResult.Count];
-            Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-            var response = WebSocketResponse.Deserialize(responseData);
             response.MessageId.Should().Be(messageId);
             response.ExitCode.Should().Be(0);
             response.Output.Should().Contain("hello world");
@@ -175,7 +222,13 @@ public class WebSocketIntegrationTests : IDisposable
             foreach (var command in commands)
             {
                 var messageId = Guid.NewGuid();
-                var commandStruct = WebSocketCommand.FromCommand(command, messageId);
+                var cmdBytes = Encoding.UTF8.GetBytes(command);
+                var commandStruct = new WebSocketCommand
+                {
+                    CommandLength = cmdBytes.Length,
+                    CommandBytes = cmdBytes,
+                    MessageId = messageId
+                };
                 var commandData = commandStruct.Serialize();
 
                 await client.SendAsync(
@@ -184,15 +237,7 @@ public class WebSocketIntegrationTests : IDisposable
                     true,
                     CancellationToken.None);
 
-                var responseBuffer = new byte[1024 * 4];
-                var responseResult = await client.ReceiveAsync(
-                    new ArraySegment<byte>(responseBuffer),
-                    CancellationToken.None);
-
-                var responseData = new byte[responseResult.Count];
-                Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-                var response = WebSocketResponse.Deserialize(responseData);
+                var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
                 responses.Add(response);
             }
 
@@ -201,7 +246,6 @@ public class WebSocketIntegrationTests : IDisposable
             foreach (var response in responses)
             {
                 // Commands are executed for real, so we just verify they complete successfully
-                // pwd and whoami should always succeed, ls may fail if directory is empty but exit code should be 0
                 response.ExitCode.Should().BeGreaterThanOrEqualTo(0);
             }
         }
@@ -307,7 +351,13 @@ public class WebSocketIntegrationTests : IDisposable
             // Create empty command
             var emptyCommand = "";
             var messageId = Guid.NewGuid();
-            var commandStruct = WebSocketCommand.FromCommand(emptyCommand, messageId);
+            var cmdBytes = Encoding.UTF8.GetBytes(emptyCommand);
+            var commandStruct = new WebSocketCommand
+            {
+                CommandLength = cmdBytes.Length,
+                CommandBytes = cmdBytes,
+                MessageId = messageId
+            };
             var commandData = commandStruct.Serialize();
 
             // Act
@@ -317,18 +367,9 @@ public class WebSocketIntegrationTests : IDisposable
                 true,
                 CancellationToken.None);
 
-            var responseBuffer = new byte[1024 * 4];
-            var responseResult = await client.ReceiveAsync(
-                new ArraySegment<byte>(responseBuffer),
-                CancellationToken.None);
+            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
 
             // Assert
-            responseResult.MessageType.Should().Be(WebSocketMessageType.Binary);
-
-            var responseData = new byte[responseResult.Count];
-            Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-            var response = WebSocketResponse.Deserialize(responseData);
             response.MessageId.Should().Be(messageId);
             response.ExitCode.Should().Be(0);
         }
@@ -357,7 +398,13 @@ public class WebSocketIntegrationTests : IDisposable
             // Create a valid command with large output
             var largeCommand = "echo " + new string('a', 500);
             var messageId = Guid.NewGuid();
-            var commandStruct = WebSocketCommand.FromCommand(largeCommand, messageId);
+            var cmdBytes = Encoding.UTF8.GetBytes(largeCommand);
+            var commandStruct = new WebSocketCommand
+            {
+                CommandLength = cmdBytes.Length,
+                CommandBytes = cmdBytes,
+                MessageId = messageId
+            };
             var commandData = commandStruct.Serialize();
 
             // Act
@@ -367,18 +414,9 @@ public class WebSocketIntegrationTests : IDisposable
                 true,
                 CancellationToken.None);
 
-            var responseBuffer = new byte[1024 * 8]; // Larger buffer for response
-            var responseResult = await client.ReceiveAsync(
-                new ArraySegment<byte>(responseBuffer),
-                CancellationToken.None);
+            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
 
             // Assert
-            responseResult.MessageType.Should().Be(WebSocketMessageType.Binary);
-
-            var responseData = new byte[responseResult.Count];
-            Array.Copy(responseBuffer, responseData, responseResult.Count);
-
-            var response = WebSocketResponse.Deserialize(responseData);
             response.MessageId.Should().Be(messageId);
             response.ExitCode.Should().Be(0);
             response.Output.Should().Contain(new string('a', 500));
@@ -390,5 +428,46 @@ public class WebSocketIntegrationTests : IDisposable
                 await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
             }
         }
+    }
+
+    [Fact]
+    public async Task StopAsync_WithActiveClients_ShouldCloseClientsCorrectly()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var client = new ClientWebSocket();
+        await client.ConnectAsync(new Uri("ws://localhost:8095/"), CancellationToken.None);
+
+        // Act
+        await _server.StopAsync();
+
+        // Wait for client to detect closure
+        var buffer = new byte[1024];
+        try
+        {
+            await client.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+        }
+        catch (WebSocketException) { }
+
+        // Assert
+        client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.Closed || s == WebSocketState.Aborted);
+        _server.ConnectedClientCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task NonWebSocketRequest_ShouldBeClosed()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var httpClient = new HttpClient();
+
+        // Act
+        // Send a regular HTTP GET request instead of a WebSocket upgrade
+        var response = await httpClient.GetAsync("http://localhost:8095/");
+
+        // Assert
+        // Since we call context.Response.Close() without setting status code, it might default to 200 or just terminate the connection.
+        // The important thing is that it finishes and doesn't hang.
+        response.IsSuccessStatusCode.Should().BeTrue();
     }
 }
