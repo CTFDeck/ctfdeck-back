@@ -107,54 +107,54 @@ public class WebSocketIntegrationTests : IDisposable
         }
     }
 
-/*     [Fact]
-    public async Task ClientSendingBinaryMessage_ShouldReceiveBinaryResponse()
-    {
-        // Arrange
-        await _server.StartAsync();
-
-        using var client = new ClientWebSocket();
-        var serverUri = new Uri("ws://localhost:8095/");
-
-        try
+    /*     [Fact]
+        public async Task ClientSendingBinaryMessage_ShouldReceiveBinaryResponse()
         {
-            await client.ConnectAsync(serverUri, CancellationToken.None);
+            // Arrange
+            await _server.StartAsync();
 
-            // Create test command
-            var command = "echo hello world";
-            var messageId = Guid.NewGuid();
-            var cmdBytes = Encoding.UTF8.GetBytes(command);
-            var commandStruct = new WebSocketCommand
+            using var client = new ClientWebSocket();
+            var serverUri = new Uri("ws://localhost:8095/");
+
+            try
             {
-                CommandLength = cmdBytes.Length,
-                CommandBytes = cmdBytes,
-                MessageId = messageId
-            };
-            var commandData = commandStruct.Serialize();
+                await client.ConnectAsync(serverUri, CancellationToken.None);
 
-            // Act
-            await client.SendAsync(
-                new ArraySegment<byte>(commandData),
-                WebSocketMessageType.Binary,
-                true,
-                CancellationToken.None);
+                // Create test command
+                var command = "echo hello world";
+                var messageId = Guid.NewGuid();
+                var cmdBytes = Encoding.UTF8.GetBytes(command);
+                var commandStruct = new WebSocketCommand
+                {
+                    CommandLength = cmdBytes.Length,
+                    CommandBytes = cmdBytes,
+                    MessageId = messageId
+                };
+                var commandData = commandStruct.Serialize();
 
-            var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
+                // Act
+                await client.SendAsync(
+                    new ArraySegment<byte>(commandData),
+                    WebSocketMessageType.Binary,
+                    true,
+                    CancellationToken.None);
 
-            // Assert
-            response.MessageId.Should().Be(messageId);
-            response.ExitCode.Should().Be(0);
-            response.Output.Should().Contain("hello world");
-            response.Error.Should().BeEmpty();
-        }
-        finally
-        {
-            if (client.State == WebSocketState.Open)
-            {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
+
+                // Assert
+                response.MessageId.Should().Be(messageId);
+                response.ExitCode.Should().Be(0);
+                response.Output.Should().Contain("hello world");
+                response.Error.Should().BeEmpty();
             }
-        }
-    } */
+            finally
+            {
+                if (client.State == WebSocketState.Open)
+                {
+                    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                }
+            }
+        } */
 
     [Fact]
     public async Task MultipleClients_ShouldConnectSimultaneously()
