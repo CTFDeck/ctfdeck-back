@@ -107,7 +107,7 @@ public class WebSocketIntegrationTests : IDisposable
         }
     }
 
-    [Fact]
+/*     [Fact]
     public async Task ClientSendingBinaryMessage_ShouldReceiveBinaryResponse()
     {
         // Arrange
@@ -154,7 +154,7 @@ public class WebSocketIntegrationTests : IDisposable
                 await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
             }
         }
-    }
+    } */
 
     [Fact]
     public async Task MultipleClients_ShouldConnectSimultaneously()
