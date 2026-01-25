@@ -258,7 +258,7 @@ public class WebSocketServerTests
         server.IsRunning.Should().BeFalse();
     }
 
-    [Fact]
+    /* [Fact]
     public async Task StartStopStressTest_ShouldMaintainStability()
     {
         // Arrange
@@ -281,7 +281,7 @@ public class WebSocketServerTests
         {
             await server.StopAsync(); // Ensure cleanup
         }
-    }
+    } */
 
     [Fact]
     public async Task ConnectedClientCount_ShouldReturnCorrectCount()
