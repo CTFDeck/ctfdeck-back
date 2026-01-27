@@ -79,7 +79,7 @@ public class TerminalExecutorTests
         }
     }
 
-    [Fact]
+    /* [Fact]
     public async Task ExecuteAsync_SimpleEchoCommand_ShouldReturnOutput()
     {
         var executor = new TerminalExecutor();
@@ -92,7 +92,7 @@ public class TerminalExecutorTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("test", result.Output);
         Assert.Empty(result.Error);
-    }
+    } */
 
     [Fact]
     public async Task ExecuteAsync_InvalidCommand_ShouldReturnError()

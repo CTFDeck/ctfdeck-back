@@ -55,3 +55,4 @@ nunit-*.xml
 
 node_modules/
 coveragereport/*
+global.json
