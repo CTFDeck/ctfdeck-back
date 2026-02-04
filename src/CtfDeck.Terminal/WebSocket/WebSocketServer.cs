@@ -2,6 +2,10 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
+using CtfDeck.Terminal.Session;
+using CtfDeck.Terminal.Session.Data;
+using CtfDeck.Terminal.Session.Repositories;
+using CtfDeck.Terminal.Session.Services;
 using CtfDeck.Terminal.Terminal;
 using WsClient = System.Net.WebSockets.WebSocket;
 
@@ -16,13 +20,28 @@ public class WebSocketServer
     private bool _isRunning;
     private Task? _listenerTask;
 
-    public WebSocketServer(string host = "localhost", int port = 8080)
+    // Session management
+    private readonly SessionDbContext _sessionDbContext;
+    private readonly SessionRepository _sessionRepository;
+    private readonly SessionService _sessionService;
+    private readonly ActiveSessionManager _activeSessionManager;
+    private readonly SessionMessageHandler _sessionMessageHandler;
+
+    public WebSocketServer(string host = "localhost", int port = 8080, bool useInMemoryDb = false)
     {
         _httpListener = new HttpListener();
         _httpListener.Prefixes.Add($"http://{host}:{port}/");
         _cancellationTokenSource = new CancellationTokenSource();
         _connectedClients = new ConcurrentDictionary<string, WsClient>();
         _clientExecutors = new ConcurrentDictionary<string, TerminalExecutor>();
+
+        // Initialize session management (use in-memory for tests)
+        var dbPath = useInMemoryDb ? ":memory:" : null;
+        _sessionDbContext = new SessionDbContext(dbPath);
+        _sessionRepository = new SessionRepository(_sessionDbContext);
+        _sessionService = new SessionService(_sessionRepository);
+        _activeSessionManager = new ActiveSessionManager(_sessionService);
+        _sessionMessageHandler = new SessionMessageHandler(_sessionService, _activeSessionManager);
     }
 
     public async Task StartAsync()
@@ -77,6 +96,7 @@ public class WebSocketServer
         }
 
         _connectedClients.Clear();
+        _sessionDbContext.Dispose();
         Console.WriteLine("WebSocket server stopped successfully.");
     }
 
@@ -140,6 +160,7 @@ public class WebSocketServer
         finally
         {
             _connectedClients.TryRemove(clientId, out _);
+            _activeSessionManager.ClearClient(clientId);
 
             // Dispose the executor to clean up the persistent shell process
             if (_clientExecutors.TryRemove(clientId, out var executor))
@@ -161,7 +182,7 @@ public class WebSocketServer
 
     private async Task HandleClientMessagesAsync(WsClient webSocket, string clientId)
     {
-        var buffer = new byte[1024 * 4];
+        var buffer = new byte[1024 * 64]; // 64KB buffer for session data
 
         try
         {
@@ -177,6 +198,14 @@ public class WebSocketServer
 
                 if (result.MessageType == WebSocketMessageType.Binary)
                 {
+                    var messageData = buffer.AsMemory(0, result.Count);
+
+                    // Check for session messages first
+                    if (await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token))
+                    {
+                        continue;
+                    }
+
                     await ProcessBinaryMessageStreaming(webSocket, buffer, result.Count, clientId);
                 }
             }
@@ -232,6 +261,14 @@ public class WebSocketServer
                 result.WorkingDirectory,
                 command.MessageId);
             await SendBinaryAsync(webSocket, response.Serialize());
+
+            // Record to session if active
+            _activeSessionManager.RecordCommand(
+                clientId,
+                command.Command,
+                result.Output + result.Error,
+                result.ExitCode,
+                result.WorkingDirectory);
             return;
         }
 
@@ -243,7 +280,15 @@ public class WebSocketServer
             (data, isError) => batcher.EnqueueAsync(data, isError).AsTask());
 
         // Complete batching and send stream end
-        await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
+        var accumulatedOutput = await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
+
+        // Record to session if active
+        _activeSessionManager.RecordCommand(
+            clientId,
+            command.Command,
+            accumulatedOutput,
+            streamResult.ExitCode,
+            executor.CurrentDirectory);
     }
 
     private async Task SendBinaryAsync(WsClient webSocket, byte[] data)

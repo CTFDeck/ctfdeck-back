@@ -8,10 +8,27 @@ namespace CtfDeck.Terminal.WebSocket;
 /// </summary>
 public enum MessageType : byte
 {
+    // Terminal messages
     CompleteResponse = 0,
     StreamOutput = 1,
     StreamError = 2,
-    StreamEnd = 3
+    StreamEnd = 3,
+
+    // Session requests (client → server)
+    SessionCreate = 10,
+    SessionSetActive = 11,
+    SessionLoad = 12,
+    SessionList = 13,
+    SessionDelete = 14,
+    SessionUpdateTargets = 15,
+
+    // Session responses (server → client)
+    SessionCreateResult = 20,
+    SessionSetActiveResult = 21,
+    SessionLoadResult = 22,
+    SessionListResult = 23,
+    SessionDeleteResult = 24,
+    SessionOperationError = 29
 }
 
 /// <summary>
@@ -63,6 +80,13 @@ public sealed class PooledBufferWriter : IDisposable
         EnsureCapacity(4);
         BitConverter.TryWriteBytes(_buffer.AsSpan(_position), value);
         _position += 4;
+    }
+
+    public void WriteInt64(long value)
+    {
+        EnsureCapacity(8);
+        BitConverter.TryWriteBytes(_buffer.AsSpan(_position), value);
+        _position += 8;
     }
 
     public void WriteGuid(Guid value)

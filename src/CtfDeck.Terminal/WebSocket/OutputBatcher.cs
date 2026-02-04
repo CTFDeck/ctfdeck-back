@@ -15,6 +15,8 @@ public sealed class OutputBatcher : IAsyncDisposable
     private readonly Channel<(string Data, bool IsError)> _channel;
     private readonly Task _processingTask;
     private readonly CancellationTokenSource _cts;
+    private readonly StringBuilder _accumulatedOutput = new();
+    private readonly object _outputLock = new();
 
     // Batching configuration
     private const int MaxBatchSize = 8192;  // 8KB max before force-send
@@ -115,6 +117,12 @@ public sealed class OutputBatcher : IAsyncDisposable
         var batch = isError ? stderr : stdout;
         batch.Append(data);
 
+        // Accumulate all output for session recording
+        lock (_outputLock)
+        {
+            _accumulatedOutput.Append(data);
+        }
+
         if (batch.Length >= MaxBatchSize)
         {
             _ = FlushBatchAsync(batch, isError, ct);
@@ -140,9 +148,9 @@ public sealed class OutputBatcher : IAsyncDisposable
     }
 
     /// <summary>
-    /// Complete batching and send stream end message
+    /// Complete batching and send stream end message. Returns accumulated output for session recording.
     /// </summary>
-    public async Task CompleteAsync(int exitCode, string workingDirectory)
+    public async Task<string> CompleteAsync(int exitCode, string workingDirectory)
     {
         _channel.Writer.Complete();
         await _processingTask;
@@ -151,6 +159,11 @@ public sealed class OutputBatcher : IAsyncDisposable
         {
             var data = BinaryProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
             await _socket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
+        }
+
+        lock (_outputLock)
+        {
+            return _accumulatedOutput.ToString();
         }
     }
 

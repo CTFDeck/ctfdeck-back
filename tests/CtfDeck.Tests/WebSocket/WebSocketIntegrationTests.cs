@@ -13,7 +13,7 @@ public class WebSocketIntegrationTests : IDisposable
     public WebSocketIntegrationTests()
     {
         _cancellationTokenSource = new CancellationTokenSource();
-        _server = new WebSocketServer("localhost", 8095); // Use different port for tests
+        _server = new WebSocketServer("localhost", 8095, useInMemoryDb: true); // Use different port for tests
     }
 
     public void Dispose()
