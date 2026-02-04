@@ -1,3 +1,4 @@
+using SessionModel = CtfDeck.Terminal.Session.Models.Session;
 using CtfDeck.Terminal.Session.Models;
 using CtfDeck.Terminal.Session.Repositories;
 
@@ -15,12 +16,12 @@ public class SessionService
         _repository = repository;
     }
 
-    public Models.Session Create(string name)
+    public SessionModel Create(string name)
     {
         return _repository.Create(name);
     }
 
-    public Models.Session? GetById(Guid id)
+    public SessionModel? GetById(Guid id)
     {
         return _repository.GetById(id);
     }

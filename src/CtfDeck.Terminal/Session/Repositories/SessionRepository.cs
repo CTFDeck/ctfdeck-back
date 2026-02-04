@@ -1,4 +1,5 @@
 using CtfDeck.Terminal.Session.Data;
+using SessionModel = CtfDeck.Terminal.Session.Models.Session;
 using CtfDeck.Terminal.Session.Models;
 
 namespace CtfDeck.Terminal.Session.Repositories;
@@ -13,9 +14,9 @@ public class SessionRepository : ISessionRepository
         _context = context;
     }
 
-    public Models.Session Create(string name)
+    public SessionModel Create(string name)
     {
-        var session = new Models.Session
+        var session = new SessionModel
         {
             Id = Guid.NewGuid(),
             Name = name,
@@ -33,7 +34,7 @@ public class SessionRepository : ISessionRepository
         return session;
     }
 
-    public Models.Session? GetById(Guid id)
+    public SessionModel? GetById(Guid id)
     {
         lock (_lock)
         {

@@ -1,3 +1,4 @@
+using SessionModel = CtfDeck.Terminal.Session.Models.Session;
 using CtfDeck.Terminal.Session.Models;
 using CtfDeck.Terminal.WebSocket;
 
@@ -24,7 +25,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeLoadResult(Guid messageId, bool success, Models.Session? session)
+    public static byte[] SerializeLoadResult(Guid messageId, bool success, SessionModel? session)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionLoadResult);
@@ -74,7 +75,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    private static void WriteSession(PooledBufferWriter writer, Models.Session session)
+    private static void WriteSession(PooledBufferWriter writer, SessionModel session)
     {
         writer.WriteGuid(session.Id);
         writer.WriteString(session.Name);

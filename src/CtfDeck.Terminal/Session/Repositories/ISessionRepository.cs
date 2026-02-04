@@ -1,11 +1,12 @@
+using SessionModel = CtfDeck.Terminal.Session.Models.Session;
 using CtfDeck.Terminal.Session.Models;
 
 namespace CtfDeck.Terminal.Session.Repositories;
 
 public interface ISessionRepository
 {
-    Models.Session Create(string name);
-    Models.Session? GetById(Guid id);
+    SessionModel Create(string name);
+    SessionModel? GetById(Guid id);
     IEnumerable<SessionMetadata> GetAllMetadata();
     bool Delete(Guid id);
     void AddHistoryEntry(Guid sessionId, HistoryEntry entry);

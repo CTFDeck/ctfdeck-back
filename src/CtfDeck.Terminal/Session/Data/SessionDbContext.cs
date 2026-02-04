@@ -1,12 +1,16 @@
 using LiteDB;
+using SessionModel = CtfDeck.Terminal.Session.Models.Session;
 using CtfDeck.Terminal.Session.Models;
 
 namespace CtfDeck.Terminal.Session.Data;
 
 public class SessionDbContext : IDisposable
 {
+    private static bool _mapperConfigured;
+    private static readonly object _mapperLock = new();
+
     private readonly LiteDatabase _database;
-    private readonly ILiteCollection<Models.Session> _sessions;
+    private readonly ILiteCollection<SessionModel> _sessions;
     private bool _disposed;
 
     public SessionDbContext(string? databasePath = null)
@@ -16,27 +20,36 @@ public class SessionDbContext : IDisposable
             ? "Filename=:memory:;Mode=Memory;Cache=Shared"
             : $"Filename={databasePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ctfdeck_sessions.db")}";
 
-        _database = new LiteDatabase(connectionString);
         ConfigureBsonMapper();
-        _sessions = _database.GetCollection<Models.Session>("sessions");
+        _database = new LiteDatabase(connectionString);
+        _sessions = _database.GetCollection<SessionModel>("sessions");
         _sessions.EnsureIndex(x => x.Id, unique: true);
         _sessions.EnsureIndex(x => x.Name);
     }
 
-    public ILiteCollection<Models.Session> Sessions => _sessions;
+    public ILiteCollection<SessionModel> Sessions => _sessions;
 
-    private void ConfigureBsonMapper()
+    private static void ConfigureBsonMapper()
     {
-        BsonMapper.Global.EnumAsInteger = true;
+        if (_mapperConfigured) return;
 
-        BsonMapper.Global.Entity<Models.Session>()
-            .Id(x => x.Id);
+        lock (_mapperLock)
+        {
+            if (_mapperConfigured) return;
 
-        BsonMapper.Global.Entity<HistoryEntry>()
-            .Id(x => x.Id);
+            BsonMapper.Global.EnumAsInteger = true;
 
-        BsonMapper.Global.Entity<SessionTarget>()
-            .Id(x => x.Id);
+            BsonMapper.Global.Entity<SessionModel>()
+                .Id(x => x.Id);
+
+            BsonMapper.Global.Entity<HistoryEntry>()
+                .Id(x => x.Id);
+
+            BsonMapper.Global.Entity<SessionTarget>()
+                .Id(x => x.Id);
+
+            _mapperConfigured = true;
+        }
     }
 
     public void Dispose()
