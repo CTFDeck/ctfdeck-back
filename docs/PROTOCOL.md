@@ -313,3 +313,264 @@ wscat -c "ws://localhost:42712"
 - Verify UTF-8 encoding
 - Ensure proper message boundaries
 - Validate UUID format
+
+---
+
+## Session Management Protocol
+
+### Overview
+
+The Session Management Protocol extends the base terminal protocol to support persistent sessions. Sessions store command history and targets, enabling users to save and restore their CTF work.
+
+**Key Features:**
+- Automatic command history recording
+- Target management (IP, ports, challenge types)
+- Output truncation (10KB max per command)
+- LiteDB persistence on server side
+
+### Message Types
+
+All session messages use a 1-byte type prefix to differentiate from terminal messages.
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| SessionCreate | 10 | Client → Server | Create a new session |
+| SessionSetActive | 11 | Client → Server | Set active session for recording |
+| SessionLoad | 12 | Client → Server | Load full session data |
+| SessionList | 13 | Client → Server | List all sessions (metadata) |
+| SessionDelete | 14 | Client → Server | Delete a session |
+| SessionUpdateTargets | 15 | Client → Server | Sync targets to session |
+| SessionCreateResult | 20 | Server → Client | Response to SessionCreate |
+| SessionSetActiveResult | 21 | Server → Client | Response to SessionSetActive |
+| SessionLoadResult | 22 | Server → Client | Response to SessionLoad |
+| SessionListResult | 23 | Server → Client | Response to SessionList |
+| SessionDeleteResult | 24 | Server → Client | Response to SessionDelete |
+| SessionOperationError | 29 | Server → Client | Error response |
+
+### Request Message Formats
+
+#### SessionCreate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (10)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Name length (N)
+21     | N    | bytes[]   | Session name (UTF-8)
+```
+
+#### SessionSetActive
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (11)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID, empty GUID to clear)
+```
+
+#### SessionLoad
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (12)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+```
+
+#### SessionList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (13)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+#### SessionDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (14)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+```
+
+#### SessionUpdateTargets
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (15)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Target count (N)
+37     | ...  | Target[]  | Array of targets
+```
+
+**Target structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Target ID (UUID)
+16     | 4    | int32     | Address length (A)
+20     | A    | bytes[]   | Address (UTF-8)
+20+A   | 4    | int32     | Port (-1 if null)
+24+A   | 4    | int32     | Name length (N)
+28+A   | N    | bytes[]   | Name (UTF-8)
+28+A+N | 4    | int32     | Target type (enum)
+```
+
+### Response Message Formats
+
+#### SessionCreateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (20)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created session ID (UUID)
+```
+
+#### SessionSetActiveResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (21)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionLoadResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (22)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | ...  | Session   | Session data (if success)
+```
+
+**Session structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Session ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 8    | int64     | CreatedAt (.NET ticks)
+28+N   | 8    | int64     | UpdatedAt (.NET ticks)
+36+N   | 4    | int32     | History count (H)
+40+N   | ...  | Entry[]   | History entries
+...    | 4    | int32     | Target count (T)
+...    | ...  | Target[]  | Targets
+```
+
+**HistoryEntry structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Entry ID (UUID)
+16     | 8    | int64     | Timestamp (.NET ticks)
+24     | 4    | int32     | WorkingDirectory length (W)
+28     | W    | bytes[]   | WorkingDirectory (UTF-8)
+28+W   | 4    | int32     | Command length (C)
+32+W   | C    | bytes[]   | Command (UTF-8)
+32+W+C | 4    | int32     | Output length (O)
+36+W+C | O    | bytes[]   | Output (UTF-8, max 10KB)
+36+W+C+O| 4   | int32     | Exit code
+```
+
+#### SessionListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (23)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Session count (N)
+21     | ...  | Metadata[]  | Session metadata array
+```
+
+**SessionMetadata structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Session ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 8    | int64     | CreatedAt (.NET ticks)
+28+N   | 8    | int64     | UpdatedAt (.NET ticks)
+36+N   | 4    | int32     | History count
+40+N   | 4    | int32     | Target count
+```
+
+#### SessionDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (24)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (29)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Target Types
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Unknown | Unspecified challenge type |
+| 1 | Web | Web exploitation |
+| 2 | Pwn | Binary exploitation |
+| 3 | Crypto | Cryptography |
+| 4 | Forensics | Digital forensics |
+| 5 | Reverse | Reverse engineering |
+| 6 | Misc | Miscellaneous |
+
+### Automatic Command Recording
+
+When a session is active, the server automatically records every command executed:
+
+**Recording behavior:**
+- Commands are recorded with timestamp, working directory, and exit code
+- Output is truncated to 10KB maximum (with `\n[truncated]` suffix)
+- Both streaming and non-streaming commands are recorded
+- Recording happens after command completion
+
+### Output Truncation
+
+To prevent database bloat, command outputs are limited:
+
+```
+MAX_OUTPUT_SIZE = 10 * 1024  // 10KB
+TRUNCATED_SUFFIX = "\n[truncated]"
+
+if output.byteLength > MAX_OUTPUT_SIZE:
+    output = output[0:MAX_OUTPUT_SIZE - TRUNCATED_SUFFIX.length] + TRUNCATED_SUFFIX
+```
+
+### DateTime Encoding
+
+Timestamps use .NET ticks (100-nanosecond intervals since 0001-01-01):
+
+```javascript
+// JavaScript: Convert ticks to Date
+function ticksToDate(ticks) {
+    const epochDiff = BigInt('621355968000000000');
+    const ticksPerMs = BigInt(10000);
+    const ms = Number((ticks - epochDiff) / ticksPerMs);
+    return new Date(ms);
+}
+
+// JavaScript: Convert Date to ticks
+function dateToTicks(date) {
+    const epochDiff = BigInt('621355968000000000');
+    const ticksPerMs = BigInt(10000);
+    return epochDiff + BigInt(date.getTime()) * ticksPerMs;
+}
+```
+
+### Storage
+
+Sessions are persisted using LiteDB:
+- **File location:** `ctfdeck_sessions.db` (same directory as executable)
+- **Collections:** `sessions`
+- **Indexes:** `Id` (unique), `Name`
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Session not found | Invalid session ID | Use SessionList to get valid IDs |
+| SetActive failed | Session doesn't exist | Create session first |
+| Database locked | Concurrent access | Retry operation |
