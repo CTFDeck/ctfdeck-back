@@ -34,6 +34,7 @@ Root document representing a CTF session.
 {
   "_id": "GUID",
   "Name": "string",
+  "Description": "string",
   "CreatedAt": "DateTime (UTC)",
   "UpdatedAt": "DateTime (UTC)",
   "History": [HistoryEntry],
@@ -45,6 +46,7 @@ Root document representing a CTF session.
 |-------|------|-------------|
 | `_id` | `Guid` | Primary key, auto-generated |
 | `Name` | `string` | Session display name |
+| `Description` | `string` | Session description (default empty) |
 | `CreatedAt` | `DateTime` | Creation timestamp (UTC) |
 | `UpdatedAt` | `DateTime` | Last modification timestamp (UTC) |
 | `History` | `List<HistoryEntry>` | Embedded array of command history |
@@ -128,6 +130,7 @@ Stored as integer in database.
 {
   "_id": { "$guid": "550e8400-e29b-41d4-a716-446655440000" },
   "Name": "HTB - Machine Challenge",
+  "Description": "HackTheBox easy machine - web exploitation",
   "CreatedAt": { "$date": "2024-02-04T10:30:00Z" },
   "UpdatedAt": { "$date": "2024-02-04T11:45:00Z" },
   "History": [

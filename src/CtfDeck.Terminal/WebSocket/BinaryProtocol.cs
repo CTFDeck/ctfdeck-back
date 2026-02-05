@@ -21,6 +21,7 @@ public enum MessageType : byte
     SessionList = 13,
     SessionDelete = 14,
     SessionUpdateTargets = 15,
+    SessionUpdate = 16,
 
     // Session responses (server → client)
     SessionCreateResult = 20,
@@ -28,6 +29,7 @@ public enum MessageType : byte
     SessionLoadResult = 22,
     SessionListResult = 23,
     SessionDeleteResult = 24,
+    SessionUpdateResult = 25,
     SessionOperationError = 29
 }
 

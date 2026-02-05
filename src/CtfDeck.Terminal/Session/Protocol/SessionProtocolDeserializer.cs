@@ -124,10 +124,35 @@ public class SessionUpdateTargetsRequest
     }
 }
 
+public class SessionUpdateRequest
+{
+    public Guid MessageId { get; }
+    public Guid SessionId { get; }
+    public string Name { get; }
+    public string Description { get; }
+
+    public SessionUpdateRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId][16B sessionId][4B nameLen][name][4B descLen][desc]
+        MessageId = new Guid(data.Slice(1, 16));
+        SessionId = new Guid(data.Slice(17, 16));
+
+        var offset = 33;
+        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
+        offset += nameLen;
+
+        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        Description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+    }
+}
+
 public static class SessionProtocolDeserializer
 {
     public static bool IsSessionMessage(MessageType type)
     {
-        return type >= MessageType.SessionCreate && type <= MessageType.SessionUpdateTargets;
+        return type >= MessageType.SessionCreate && type <= MessageType.SessionUpdate;
     }
 }

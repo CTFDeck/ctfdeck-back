@@ -340,11 +340,13 @@ All session messages use a 1-byte type prefix to differentiate from terminal mes
 | SessionList | 13 | Client → Server | List all sessions (metadata) |
 | SessionDelete | 14 | Client → Server | Delete a session |
 | SessionUpdateTargets | 15 | Client → Server | Sync targets to session |
+| SessionUpdate | 16 | Client → Server | Update session name and description |
 | SessionCreateResult | 20 | Server → Client | Response to SessionCreate |
 | SessionSetActiveResult | 21 | Server → Client | Response to SessionSetActive |
 | SessionLoadResult | 22 | Server → Client | Response to SessionLoad |
 | SessionListResult | 23 | Server → Client | Response to SessionList |
 | SessionDeleteResult | 24 | Server → Client | Response to SessionDelete |
+| SessionUpdateResult | 25 | Server → Client | Response to SessionUpdate |
 | SessionOperationError | 29 | Server → Client | Error response |
 
 ### Request Message Formats
@@ -411,6 +413,18 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 28+A+N | 4    | int32     | Target type (enum)
 ```
 
+#### SessionUpdate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (16)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Session name (UTF-8)
+37+N   | 4    | int32     | Description length (D)
+41+N   | D    | bytes[]   | Session description (UTF-8)
+```
+
 ### Response Message Formats
 
 #### SessionCreateResult
@@ -445,10 +459,12 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 16   | bytes[16] | Session ID (UUID)
 16     | 4    | int32     | Name length (N)
 20     | N    | bytes[]   | Name (UTF-8)
-20+N   | 8    | int64     | CreatedAt (.NET ticks)
-28+N   | 8    | int64     | UpdatedAt (.NET ticks)
-36+N   | 4    | int32     | History count (H)
-40+N   | ...  | Entry[]   | History entries
+20+N   | 4    | int32     | Description length (D)
+24+N   | D    | bytes[]   | Description (UTF-8)
+24+N+D | 8    | int64     | CreatedAt (.NET ticks)
+32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
+40+N+D | 4    | int32     | History count (H)
+44+N+D | ...  | Entry[]   | History entries
 ...    | 4    | int32     | Target count (T)
 ...    | ...  | Target[]  | Targets
 ```
@@ -482,16 +498,26 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 16   | bytes[16] | Session ID (UUID)
 16     | 4    | int32     | Name length (N)
 20     | N    | bytes[]   | Name (UTF-8)
-20+N   | 8    | int64     | CreatedAt (.NET ticks)
-28+N   | 8    | int64     | UpdatedAt (.NET ticks)
-36+N   | 4    | int32     | History count
-40+N   | 4    | int32     | Target count
+20+N   | 4    | int32     | Description length (D)
+24+N   | D    | bytes[]   | Description (UTF-8)
+24+N+D | 8    | int64     | CreatedAt (.NET ticks)
+32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
+40+N+D | 4    | int32     | History count
+44+N+D | 4    | int32     | Target count
 ```
 
 #### SessionDeleteResult
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 1    | byte      | Message type (24)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionUpdateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (25)
 1      | 16   | bytes[16] | Message ID (UUID)
 17     | 1    | byte      | Success (1 = true, 0 = false)
 ```

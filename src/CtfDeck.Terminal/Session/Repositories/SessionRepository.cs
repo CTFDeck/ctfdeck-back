@@ -52,12 +52,27 @@ public class SessionRepository : ISessionRepository
                 {
                     Id = s.Id,
                     Name = s.Name,
+                    Description = s.Description,
                     CreatedAt = s.CreatedAt,
                     UpdatedAt = s.UpdatedAt,
                     HistoryCount = s.History.Count,
                     TargetCount = s.Targets.Count
                 })
                 .ToList();
+        }
+    }
+
+    public bool Update(Guid id, string name, string description)
+    {
+        lock (_lock)
+        {
+            var session = _context.Sessions.FindById(id);
+            if (session == null) return false;
+
+            session.Name = name;
+            session.Description = description;
+            session.UpdatedAt = DateTime.UtcNow;
+            return _context.Sessions.Update(session);
         }
     }
 

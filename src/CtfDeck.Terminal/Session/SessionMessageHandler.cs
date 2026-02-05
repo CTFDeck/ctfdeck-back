@@ -39,6 +39,7 @@ public class SessionMessageHandler
                 MessageType.SessionList => HandleList(data.Span),
                 MessageType.SessionDelete => HandleDelete(data.Span),
                 MessageType.SessionUpdateTargets => HandleUpdateTargets(data.Span),
+                MessageType.SessionUpdate => HandleUpdate(data.Span),
                 _ => throw new InvalidOperationException($"Unknown session message type: {messageType}")
             };
         }
@@ -97,5 +98,12 @@ public class SessionMessageHandler
         var request = new SessionUpdateTargetsRequest(data);
         _sessionService.UpdateTargets(request.SessionId, request.Targets);
         return SessionProtocolSerializer.SerializeDeleteResult(request.MessageId, true);
+    }
+
+    private byte[] HandleUpdate(ReadOnlySpan<byte> data)
+    {
+        var request = new SessionUpdateRequest(data);
+        var success = _sessionService.Update(request.SessionId, request.Name, request.Description);
+        return SessionProtocolSerializer.SerializeUpdateResult(request.MessageId, success);
     }
 }

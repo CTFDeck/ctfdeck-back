@@ -9,6 +9,7 @@ public interface ISessionRepository
     SessionModel? GetById(Guid id);
     IEnumerable<SessionMetadata> GetAllMetadata();
     bool Delete(Guid id);
+    bool Update(Guid id, string name, string description);
     void AddHistoryEntry(Guid sessionId, HistoryEntry entry);
     void UpdateTargets(Guid sessionId, List<SessionTarget> targets);
 }

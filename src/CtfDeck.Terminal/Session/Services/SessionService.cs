@@ -31,6 +31,11 @@ public class SessionService
         return _repository.GetAllMetadata();
     }
 
+    public bool Update(Guid id, string name, string description)
+    {
+        return _repository.Update(id, name, description);
+    }
+
     public bool Delete(Guid id)
     {
         return _repository.Delete(id);

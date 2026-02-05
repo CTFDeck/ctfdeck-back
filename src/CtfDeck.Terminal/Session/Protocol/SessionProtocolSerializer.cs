@@ -57,6 +57,15 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
+    public static byte[] SerializeUpdateResult(Guid messageId, bool success)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.SessionUpdateResult);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        return writer.ToArray();
+    }
+
     public static byte[] SerializeDeleteResult(Guid messageId, bool success)
     {
         using var writer = new PooledBufferWriter();
@@ -79,6 +88,7 @@ public static class SessionProtocolSerializer
     {
         writer.WriteGuid(session.Id);
         writer.WriteString(session.Name);
+        writer.WriteString(session.Description ?? string.Empty);
         writer.WriteInt64(session.CreatedAt.Ticks);
         writer.WriteInt64(session.UpdatedAt.Ticks);
 
@@ -118,6 +128,7 @@ public static class SessionProtocolSerializer
     {
         writer.WriteGuid(meta.Id);
         writer.WriteString(meta.Name);
+        writer.WriteString(meta.Description ?? string.Empty);
         writer.WriteInt64(meta.CreatedAt.Ticks);
         writer.WriteInt64(meta.UpdatedAt.Ticks);
         writer.WriteInt32(meta.HistoryCount);
