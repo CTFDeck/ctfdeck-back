@@ -25,6 +25,9 @@ public enum MessageType : byte
     SessionDelete = 14,
     SessionUpdateTargets = 15,
     SessionUpdate = 16,
+    SessionAddTarget = 17,
+    SessionDeleteTarget = 18,
+    SessionEditTarget = 19,
 
     // Session responses (server → client)
     SessionCreateResult = 20,
@@ -33,6 +36,9 @@ public enum MessageType : byte
     SessionListResult = 23,
     SessionDeleteResult = 24,
     SessionUpdateResult = 25,
+    SessionAddTargetResult = 26,
+    SessionDeleteTargetResult = 27,
+    SessionEditTargetResult = 28,
     SessionOperationError = 29,
 
     // CustomScript requests (client → server)

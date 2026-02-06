@@ -103,6 +103,7 @@ Represents a target machine/service in a CTF.
   "Address": "string",
   "Port": "int | null",
   "Name": "string",
+  "Description": "string",
   "Type": "int (enum)"
 }
 ```
@@ -113,6 +114,7 @@ Represents a target machine/service in a CTF.
 | `Address` | `string` | IP address or hostname |
 | `Port` | `int?` | Port number (nullable) |
 | `Name` | `string` | Display name for the target |
+| `Description` | `string` | Target description (auto-filled as `"{name} {address}:{port}"` if empty) |
 | `Type` | `TargetType` | Category enum (stored as int) |
 
 ---
@@ -202,6 +204,7 @@ Stored as integer in database.
       "Address": "10.10.10.100",
       "Port": 80,
       "Name": "Main Web Server",
+      "Description": "Main Web Server 10.10.10.100:80",
       "Type": 1
     },
     {
@@ -209,6 +212,7 @@ Stored as integer in database.
       "Address": "10.10.10.100",
       "Port": 22,
       "Name": "SSH Access",
+      "Description": "SSH Access 10.10.10.100:22",
       "Type": 0
     }
   ]

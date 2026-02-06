@@ -110,6 +110,11 @@ public class SessionUpdateTargetsRequest
         var name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
         offset += nameLen;
 
+        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+        offset += descLen;
+
         var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
         offset += 4;
 
@@ -119,6 +124,7 @@ public class SessionUpdateTargetsRequest
             Address = address,
             Port = port,
             Name = name,
+            Description = description,
             Type = type
         };
     }
@@ -149,10 +155,119 @@ public class SessionUpdateRequest
     }
 }
 
+public class SessionAddTargetRequest
+{
+    public Guid MessageId { get; }
+    public Guid SessionId { get; }
+    public SessionTarget Target { get; }
+
+    public SessionAddTargetRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId][16B sessionId][4B addrLen][addr][4B port][4B nameLen][name][4B descLen][desc][4B type]
+        MessageId = new Guid(data.Slice(1, 16));
+        SessionId = new Guid(data.Slice(17, 16));
+
+        var offset = 33;
+
+        var addrLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var address = Encoding.UTF8.GetString(data.Slice(offset, addrLen));
+        offset += addrLen;
+
+        var portValue = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        int? port = portValue == -1 ? null : portValue;
+
+        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
+        offset += nameLen;
+
+        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+        offset += descLen;
+
+        var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
+
+        Target = new SessionTarget
+        {
+            Address = address,
+            Port = port,
+            Name = name,
+            Description = description,
+            Type = type
+        };
+    }
+}
+
+public class SessionDeleteTargetRequest
+{
+    public Guid MessageId { get; }
+    public Guid SessionId { get; }
+    public Guid TargetId { get; }
+
+    public SessionDeleteTargetRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId][16B sessionId][16B targetId]
+        MessageId = new Guid(data.Slice(1, 16));
+        SessionId = new Guid(data.Slice(17, 16));
+        TargetId = new Guid(data.Slice(33, 16));
+    }
+}
+
+public class SessionEditTargetRequest
+{
+    public Guid MessageId { get; }
+    public Guid SessionId { get; }
+    public SessionTarget Target { get; }
+
+    public SessionEditTargetRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId][16B sessionId][16B targetId][4B addrLen][addr][4B port][4B nameLen][name][4B descLen][desc][4B type]
+        MessageId = new Guid(data.Slice(1, 16));
+        SessionId = new Guid(data.Slice(17, 16));
+        var targetId = new Guid(data.Slice(33, 16));
+
+        var offset = 49;
+
+        var addrLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var address = Encoding.UTF8.GetString(data.Slice(offset, addrLen));
+        offset += addrLen;
+
+        var portValue = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        int? port = portValue == -1 ? null : portValue;
+
+        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
+        offset += nameLen;
+
+        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        var description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+        offset += descLen;
+
+        var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
+
+        Target = new SessionTarget
+        {
+            Id = targetId,
+            Address = address,
+            Port = port,
+            Name = name,
+            Description = description,
+            Type = type
+        };
+    }
+}
+
 public static class SessionProtocolDeserializer
 {
     public static bool IsSessionMessage(MessageType type)
     {
-        return type >= MessageType.SessionCreate && type <= MessageType.SessionUpdate;
+        return type >= MessageType.SessionCreate && type <= MessageType.SessionEditTarget;
     }
 }

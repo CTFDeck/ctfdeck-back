@@ -63,6 +63,31 @@ public class SessionService
         _repository.UpdateTargets(sessionId, targets);
     }
 
+    public SessionTarget? AddTarget(Guid sessionId, SessionTarget target)
+    {
+        target.Description = AutoFillDescription(target.Description, target.Name, target.Address, target.Port);
+        return _repository.AddTarget(sessionId, target);
+    }
+
+    public bool DeleteTarget(Guid sessionId, Guid targetId)
+    {
+        return _repository.DeleteTarget(sessionId, targetId);
+    }
+
+    public bool UpdateTarget(Guid sessionId, SessionTarget target)
+    {
+        target.Description = AutoFillDescription(target.Description, target.Name, target.Address, target.Port);
+        return _repository.UpdateTarget(sessionId, target);
+    }
+
+    private static string AutoFillDescription(string description, string name, string address, int? port)
+    {
+        if (!string.IsNullOrWhiteSpace(description))
+            return description;
+
+        return port.HasValue ? $"{name} {address}:{port}" : $"{name} {address}";
+    }
+
     private static string TruncateOutput(string output)
     {
         if (string.IsNullOrEmpty(output)) return string.Empty;

@@ -110,4 +110,52 @@ public class SessionRepository : ISessionRepository
             _context.Sessions.Update(session);
         }
     }
+
+    public SessionTarget? AddTarget(Guid sessionId, SessionTarget target)
+    {
+        lock (_lock)
+        {
+            var session = _context.Sessions.FindById(sessionId);
+            if (session == null) return null;
+
+            target.Id = Guid.NewGuid();
+            session.Targets.Add(target);
+            session.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(session);
+            return target;
+        }
+    }
+
+    public bool DeleteTarget(Guid sessionId, Guid targetId)
+    {
+        lock (_lock)
+        {
+            var session = _context.Sessions.FindById(sessionId);
+            if (session == null) return false;
+
+            var removed = session.Targets.RemoveAll(t => t.Id == targetId);
+            if (removed == 0) return false;
+
+            session.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(session);
+            return true;
+        }
+    }
+
+    public bool UpdateTarget(Guid sessionId, SessionTarget target)
+    {
+        lock (_lock)
+        {
+            var session = _context.Sessions.FindById(sessionId);
+            if (session == null) return false;
+
+            var existing = session.Targets.FindIndex(t => t.Id == target.Id);
+            if (existing == -1) return false;
+
+            session.Targets[existing] = target;
+            session.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(session);
+            return true;
+        }
+    }
 }

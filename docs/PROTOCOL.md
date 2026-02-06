@@ -75,6 +75,26 @@ All message types (1-byte prefix):
 | CommandKill | 4 | Client → Server | Cancel a running command |
 | CommandKillResult | 5 | Server → Client | Kill result |
 | CommandExecute | 6 | Client → Server | Execute a terminal command |
+| SessionCreate | 10 | Client → Server | Create a new session |
+| SessionSetActive | 11 | Client → Server | Set active session for recording |
+| SessionLoad | 12 | Client → Server | Load full session data |
+| SessionList | 13 | Client → Server | List all sessions (metadata) |
+| SessionDelete | 14 | Client → Server | Delete a session |
+| SessionUpdateTargets | 15 | Client → Server | Bulk sync targets to session |
+| SessionUpdate | 16 | Client → Server | Update session name and description |
+| SessionAddTarget | 17 | Client → Server | Add a single target to session |
+| SessionDeleteTarget | 18 | Client → Server | Delete a single target from session |
+| SessionEditTarget | 19 | Client → Server | Edit a single target in session |
+| SessionCreateResult | 20 | Server → Client | Response to SessionCreate |
+| SessionSetActiveResult | 21 | Server → Client | Response to SessionSetActive |
+| SessionLoadResult | 22 | Server → Client | Response to SessionLoad |
+| SessionListResult | 23 | Server → Client | Response to SessionList |
+| SessionDeleteResult | 24 | Server → Client | Response to SessionDelete |
+| SessionUpdateResult | 25 | Server → Client | Response to SessionUpdate |
+| SessionAddTargetResult | 26 | Server → Client | Response to SessionAddTarget |
+| SessionDeleteTargetResult | 27 | Server → Client | Response to SessionDeleteTarget |
+| SessionEditTargetResult | 28 | Server → Client | Response to SessionEditTarget |
+| SessionOperationError | 29 | Server → Client | Session error response |
 | CustomScriptCreate | 30 | Client → Server | Create a custom script |
 | CustomScriptUpdate | 31 | Client → Server | Update a custom script |
 | CustomScriptDelete | 32 | Client → Server | Delete a custom script |
@@ -384,14 +404,20 @@ All session messages use a 1-byte type prefix to differentiate from terminal mes
 | SessionLoad | 12 | Client → Server | Load full session data |
 | SessionList | 13 | Client → Server | List all sessions (metadata) |
 | SessionDelete | 14 | Client → Server | Delete a session |
-| SessionUpdateTargets | 15 | Client → Server | Sync targets to session |
+| SessionUpdateTargets | 15 | Client → Server | Bulk sync targets to session |
 | SessionUpdate | 16 | Client → Server | Update session name and description |
+| SessionAddTarget | 17 | Client → Server | Add a single target to session |
+| SessionDeleteTarget | 18 | Client → Server | Delete a single target from session |
+| SessionEditTarget | 19 | Client → Server | Edit a single target in session |
 | SessionCreateResult | 20 | Server → Client | Response to SessionCreate |
 | SessionSetActiveResult | 21 | Server → Client | Response to SessionSetActive |
 | SessionLoadResult | 22 | Server → Client | Response to SessionLoad |
 | SessionListResult | 23 | Server → Client | Response to SessionList |
 | SessionDeleteResult | 24 | Server → Client | Response to SessionDelete |
 | SessionUpdateResult | 25 | Server → Client | Response to SessionUpdate |
+| SessionAddTargetResult | 26 | Server → Client | Response to SessionAddTarget |
+| SessionDeleteTargetResult | 27 | Server → Client | Response to SessionDeleteTarget |
+| SessionEditTargetResult | 28 | Server → Client | Response to SessionEditTarget |
 | SessionOperationError | 29 | Server → Client | Error response |
 
 ### Request Message Formats
@@ -455,7 +481,9 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 20+A   | 4    | int32     | Port (-1 if null)
 24+A   | 4    | int32     | Name length (N)
 28+A   | N    | bytes[]   | Name (UTF-8)
-28+A+N | 4    | int32     | Target type (enum)
+28+A+N | 4    | int32     | Description length (D)
+32+A+N | D    | bytes[]   | Description (UTF-8)
+32+A+N+D| 4   | int32     | Target type (enum)
 ```
 
 #### SessionUpdate
@@ -468,6 +496,48 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 37     | N    | bytes[]   | Session name (UTF-8)
 37+N   | 4    | int32     | Description length (D)
 41+N   | D    | bytes[]   | Session description (UTF-8)
+```
+
+#### SessionAddTarget
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (17)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Address length (A)
+37     | A    | bytes[]   | Address (UTF-8)
+37+A   | 4    | int32     | Port (-1 if null)
+41+A   | 4    | int32     | Name length (N)
+45+A   | N    | bytes[]   | Name (UTF-8)
+45+A+N | 4    | int32     | Description length (D)
+49+A+N | D    | bytes[]   | Description (UTF-8)
+49+A+N+D| 4   | int32     | Target type (enum)
+```
+
+#### SessionDeleteTarget
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (18)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 16   | bytes[16] | Target ID (UUID)
+```
+
+#### SessionEditTarget
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (19)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 16   | bytes[16] | Target ID (UUID)
+49     | 4    | int32     | Address length (A)
+53     | A    | bytes[]   | Address (UTF-8)
+53+A   | 4    | int32     | Port (-1 if null)
+57+A   | 4    | int32     | Name length (N)
+61+A   | N    | bytes[]   | Name (UTF-8)
+61+A+N | 4    | int32     | Description length (D)
+65+A+N | D    | bytes[]   | Description (UTF-8)
+65+A+N+D| 4   | int32     | Target type (enum)
 ```
 
 ### Response Message Formats
@@ -563,6 +633,31 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 1    | byte      | Message type (25)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionAddTargetResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (26)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created target ID (UUID)
+```
+
+#### SessionDeleteTargetResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (27)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionEditTargetResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (28)
 1      | 16   | bytes[16] | Message ID (UUID)
 17     | 1    | byte      | Success (1 = true, 0 = false)
 ```

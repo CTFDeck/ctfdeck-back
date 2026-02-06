@@ -41,6 +41,9 @@ public class SessionMessageHandler
                 MessageType.SessionDelete => HandleDelete(data.Span),
                 MessageType.SessionUpdateTargets => HandleUpdateTargets(data.Span),
                 MessageType.SessionUpdate => HandleUpdate(data.Span),
+                MessageType.SessionAddTarget => HandleAddTarget(data.Span),
+                MessageType.SessionDeleteTarget => HandleDeleteTarget(data.Span),
+                MessageType.SessionEditTarget => HandleEditTarget(data.Span),
                 _ => throw new InvalidOperationException($"Unknown session message type: {messageType}")
             };
         }
@@ -125,5 +128,27 @@ public class SessionMessageHandler
         var request = new SessionUpdateRequest(data);
         var success = _sessionService.Update(request.SessionId, request.Name, request.Description);
         return SessionProtocolSerializer.SerializeUpdateResult(request.MessageId, success);
+    }
+
+    private byte[] HandleAddTarget(ReadOnlySpan<byte> data)
+    {
+        var request = new SessionAddTargetRequest(data);
+        var target = _sessionService.AddTarget(request.SessionId, request.Target);
+        return SessionProtocolSerializer.SerializeAddTargetResult(
+            request.MessageId, target != null, target?.Id ?? Guid.Empty);
+    }
+
+    private byte[] HandleDeleteTarget(ReadOnlySpan<byte> data)
+    {
+        var request = new SessionDeleteTargetRequest(data);
+        var success = _sessionService.DeleteTarget(request.SessionId, request.TargetId);
+        return SessionProtocolSerializer.SerializeDeleteTargetResult(request.MessageId, success);
+    }
+
+    private byte[] HandleEditTarget(ReadOnlySpan<byte> data)
+    {
+        var request = new SessionEditTargetRequest(data);
+        var success = _sessionService.UpdateTarget(request.SessionId, request.Target);
+        return SessionProtocolSerializer.SerializeEditTargetResult(request.MessageId, success);
     }
 }

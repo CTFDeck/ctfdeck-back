@@ -115,12 +115,41 @@ public static class SessionProtocolSerializer
         writer.WriteInt32(entry.ExitCode);
     }
 
+    public static byte[] SerializeAddTargetResult(Guid messageId, bool success, Guid targetId)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.SessionAddTargetResult);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        writer.WriteGuid(targetId);
+        return writer.ToArray();
+    }
+
+    public static byte[] SerializeDeleteTargetResult(Guid messageId, bool success)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.SessionDeleteTargetResult);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        return writer.ToArray();
+    }
+
+    public static byte[] SerializeEditTargetResult(Guid messageId, bool success)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.SessionEditTargetResult);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        return writer.ToArray();
+    }
+
     private static void WriteSessionTarget(PooledBufferWriter writer, SessionTarget target)
     {
         writer.WriteGuid(target.Id);
         writer.WriteString(target.Address);
         writer.WriteInt32(target.Port ?? -1);
         writer.WriteString(target.Name);
+        writer.WriteString(target.Description ?? string.Empty);
         writer.WriteInt32((int)target.Type);
     }
 

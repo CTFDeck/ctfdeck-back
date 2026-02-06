@@ -12,4 +12,7 @@ public interface ISessionRepository
     bool Update(Guid id, string name, string description);
     void AddHistoryEntry(Guid sessionId, HistoryEntry entry);
     void UpdateTargets(Guid sessionId, List<SessionTarget> targets);
+    SessionTarget? AddTarget(Guid sessionId, SessionTarget target);
+    bool DeleteTarget(Guid sessionId, Guid targetId);
+    bool UpdateTarget(Guid sessionId, SessionTarget target);
 }
