@@ -29,57 +29,52 @@ Sec-WebSocket-Version: 13
 
 All messages are transmitted as binary WebSocket frames using little-endian byte ordering.
 
-### Command Message
+All messages start with a 1-byte **type prefix** that identifies the message kind. This applies to every message in the protocol (commands, responses, session operations, etc.).
+
+### Command Message (type = 6)
 
 Clients send commands using the following binary structure:
 
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
-0      | 4    | int32     | Command length (N)
-4      | N    | bytes[]   | Command string (UTF-8)
-4+N    | 16   | bytes[16] | Message ID (UUID)
+0      | 1    | byte      | Message type (6 = CommandExecute)
+1      | 4    | int32     | Command length (N)
+5      | N    | bytes[]   | Command string (UTF-8)
+5+N    | 16   | bytes[16] | Message ID (UUID)
 ```
 
-**Total Size:** 4 + N + 16 bytes
+**Total Size:** 1 + 4 + N + 16 bytes
 
-### Response Message
+### Response Message (type = 0)
 
 Servers respond with the following binary structure:
 
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
-0      | 4    | int32     | Exit code
-4      | 4    | int32     | Output length (M)
-8      | M    | bytes[]   | Output string (UTF-8)
-8+M    | 4    | int32     | Error length (K)
-8+M+K  | K    | bytes[]   | Error string (UTF-8)
-8+M+K+4|16   | bytes[16] | Message ID (UUID)
+0      | 1    | byte      | Message type (0 = CompleteResponse)
+1      | 4    | int32     | Exit code
+5      | 4    | int32     | Output length (M)
+9      | M    | bytes[]   | Output string (UTF-8)
+9+M    | 4    | int32     | Error length (K)
+9+M+4  | K    | bytes[]   | Error string (UTF-8)
+9+M+K+4| 4   | int32     | Working directory length (W)
+9+M+K+8| W   | bytes[]   | Working directory (UTF-8)
+9+M+K+W+8|16 | bytes[16] | Message ID (UUID)
 ```
-
-**Total Size:** 8 + M + K + 16 bytes
 
 ## Message Types
 
-### Command Message
+All message types (1-byte prefix):
 
-Sent by clients to execute shell commands.
-
-**Fields:**
-- `command_length`: Length of the command string in bytes
-- `command_bytes`: UTF-8 encoded command string
-- `message_id`: UUID for request-response correlation
-
-### Response Message
-
-Sent by servers with command execution results.
-
-**Fields:**
-- `exit_code`: Process exit code (0 = success, non-zero = error)
-- `output_length`: Length of stdout output in bytes
-- `output_bytes`: UTF-8 encoded stdout output
-- `error_length`: Length of stderr output in bytes
-- `error_bytes`: UTF-8 encoded stderr output
-- `message_id`: UUID matching the original command
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| CompleteResponse | 0 | Server → Client | Complete command result (cd) |
+| StreamOutput | 1 | Server → Client | Streaming stdout chunk |
+| StreamError | 2 | Server → Client | Streaming stderr chunk |
+| StreamEnd | 3 | Server → Client | Stream finished (exitCode + cwd) |
+| CommandKill | 4 | Client → Server | Cancel a running command |
+| CommandKillResult | 5 | Server → Client | Kill result |
+| CommandExecute | 6 | Client → Server | Execute a terminal command |
 
 ## Error Codes
 
@@ -149,6 +144,7 @@ public class CtfDeckClient : IDisposable
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
 
+        writer.Write((byte)6); // CommandExecute
         writer.Write(commandBytes.Length);
         writer.Write(commandBytes);
         writer.Write(messageIdBytes);
@@ -313,6 +309,46 @@ wscat -c "ws://localhost:42712"
 - Verify UTF-8 encoding
 - Ensure proper message boundaries
 - Validate UUID format
+
+---
+
+## Parallel Command Execution
+
+The server supports executing multiple commands concurrently. When a client sends a new command while another is still running, both execute in parallel with independent streaming outputs. Each command is identified by its unique `messageId`.
+
+**Behavior:**
+- Streaming commands (ls, cat, nmap, etc.) are dispatched in background tasks — fire-and-forget
+- `cd` commands remain sequential (they modify shared working directory state)
+- Session and CommandKill messages are processed inline in the message loop
+- `WebSocket.SendAsync` calls are serialized per-client via a `SemaphoreSlim` (not thread-safe natively)
+
+### CommandKill
+
+Allows the client to cancel a running command by its `messageId`.
+
+#### CommandKill (client → server)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (4)
+1      | 16   | bytes[16] | Command ID (UUID of the command to kill)
+```
+
+**Total Size:** 17 bytes
+
+#### CommandKillResult (server → client)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (5)
+1      | 16   | bytes[16] | Command ID (UUID)
+17     | 1    | byte      | Success (1 = killed, 0 = not found)
+```
+
+**Total Size:** 18 bytes
+
+**Notes:**
+- When a command is killed, it sends a `StreamEnd` message with `exitCode = -1` before the `CommandKillResult`
+- If the command has already finished, `success` will be `0`
+- On client disconnect, all active commands for that client are automatically cancelled
 
 ---
 

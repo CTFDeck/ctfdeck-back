@@ -20,7 +20,8 @@ public class SessionMessageHandler
         string clientId,
         ReadOnlyMemory<byte> data,
         System.Net.WebSockets.WebSocket webSocket,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SemaphoreSlim? sendLock = null)
     {
         if (data.Length == 0) return false;
 
@@ -49,11 +50,30 @@ public class SessionMessageHandler
             response = SessionProtocolSerializer.SerializeError(msgId, ex.Message);
         }
 
-        await webSocket.SendAsync(
-            response,
-            WebSocketMessageType.Binary,
-            true,
-            cancellationToken);
+        if (sendLock != null)
+        {
+            await sendLock.WaitAsync(cancellationToken);
+            try
+            {
+                await webSocket.SendAsync(
+                    response,
+                    WebSocketMessageType.Binary,
+                    true,
+                    cancellationToken);
+            }
+            finally
+            {
+                sendLock.Release();
+            }
+        }
+        else
+        {
+            await webSocket.SendAsync(
+                response,
+                WebSocketMessageType.Binary,
+                true,
+                cancellationToken);
+        }
 
         return true;
     }

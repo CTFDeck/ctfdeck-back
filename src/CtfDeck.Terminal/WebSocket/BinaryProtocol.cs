@@ -13,6 +13,9 @@ public enum MessageType : byte
     StreamOutput = 1,
     StreamError = 2,
     StreamEnd = 3,
+    CommandKill = 4,
+    CommandKillResult = 5,
+    CommandExecute = 6,
 
     // Session requests (client → server)
     SessionCreate = 10,
@@ -35,6 +38,7 @@ public enum MessageType : byte
 
 /// <summary>
 /// High-performance WebSocket command deserialization
+/// Format: [1B type:6][4B cmdLen][cmdBytes][16B UUID]
 /// </summary>
 public readonly ref struct WebSocketCommandReader
 {
@@ -44,12 +48,27 @@ public readonly ref struct WebSocketCommandReader
 
     public WebSocketCommandReader(ReadOnlySpan<byte> data)
     {
-        CommandLength = BitConverter.ToInt32(data[..4]);
-        CommandBytes = data.Slice(4, CommandLength);
-        MessageId = new Guid(data.Slice(4 + CommandLength, 16));
+        // Skip type byte at data[0]
+        CommandLength = BitConverter.ToInt32(data.Slice(1, 4));
+        CommandBytes = data.Slice(5, CommandLength);
+        MessageId = new Guid(data.Slice(5 + CommandLength, 16));
     }
 
     public string GetCommand() => Encoding.UTF8.GetString(CommandBytes);
+}
+
+/// <summary>
+/// High-performance CommandKill message deserialization
+/// Format: [1B type:4][16B commandId]
+/// </summary>
+public readonly ref struct CommandKillReader
+{
+    public readonly Guid CommandId;
+
+    public CommandKillReader(ReadOnlySpan<byte> data)
+    {
+        CommandId = new Guid(data.Slice(1, 16));
+    }
 }
 
 /// <summary>
@@ -176,6 +195,19 @@ public static class BinaryProtocolSerializer
     }
 
     /// <summary>
+    /// Serialize a command kill result
+    /// Format: [1B type:5][16B commandId][1B success]
+    /// </summary>
+    public static byte[] SerializeCommandKillResult(Guid commandId, bool success)
+    {
+        using var writer = new PooledBufferWriter(18);
+        writer.WriteByte((byte)MessageType.CommandKillResult);
+        writer.WriteGuid(commandId);
+        writer.WriteByte(success ? (byte)1 : (byte)0);
+        return writer.ToArray();
+    }
+
+    /// <summary>
     /// Serialize a complete response (for cd and simple commands)
     /// </summary>
     public static byte[] SerializeCompleteResponse(
@@ -223,6 +255,7 @@ public struct WebSocketCommand
     public byte[] Serialize()
     {
         using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.CommandExecute);
         writer.WriteInt32(CommandLength);
         writer.WriteBytes(CommandBytes);
         writer.WriteGuid(MessageId);

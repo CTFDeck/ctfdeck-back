@@ -32,8 +32,8 @@ public class BinaryProtocolTests
         binaryData.Should().NotBeNull();
         binaryData.Length.Should().BeGreaterThan(0);
 
-        // Verify structure: [4 bytes length] + [command bytes] + [16 bytes UUID]
-        binaryData.Length.Should().Be(4 + commandText.Length + 16);
+        // Verify structure: [1 byte type] + [4 bytes length] + [command bytes] + [16 bytes UUID]
+        binaryData.Length.Should().Be(1 + 4 + commandText.Length + 16);
     }
 
     [Fact]
