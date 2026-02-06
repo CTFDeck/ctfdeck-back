@@ -1,6 +1,7 @@
 using LiteDB;
 using SessionModel = CtfDeck.Terminal.Session.Models.Session;
 using CtfDeck.Terminal.Session.Models;
+using CtfDeck.Terminal.Script.Models;
 
 namespace CtfDeck.Terminal.Session.Data;
 
@@ -11,6 +12,7 @@ public class SessionDbContext : IDisposable
 
     private readonly LiteDatabase _database;
     private readonly ILiteCollection<SessionModel> _sessions;
+    private readonly ILiteCollection<CustomScript> _customScripts;
     private bool _disposed;
 
     public SessionDbContext(string? databasePath = null)
@@ -25,9 +27,13 @@ public class SessionDbContext : IDisposable
         _sessions = _database.GetCollection<SessionModel>("sessions");
         _sessions.EnsureIndex(x => x.Id, unique: true);
         _sessions.EnsureIndex(x => x.Name);
+
+        _customScripts = _database.GetCollection<CustomScript>("customscripts");
+        _customScripts.EnsureIndex(x => x.Id, unique: true);
     }
 
     public ILiteCollection<SessionModel> Sessions => _sessions;
+    public ILiteCollection<CustomScript> CustomScripts => _customScripts;
 
     private static void ConfigureBsonMapper()
     {
@@ -46,6 +52,9 @@ public class SessionDbContext : IDisposable
                 .Id(x => x.Id);
 
             BsonMapper.Global.Entity<SessionTarget>()
+                .Id(x => x.Id);
+
+            BsonMapper.Global.Entity<CustomScript>()
                 .Id(x => x.Id);
 
             _mapperConfigured = true;

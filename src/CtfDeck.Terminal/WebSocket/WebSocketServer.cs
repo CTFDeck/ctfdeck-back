@@ -2,6 +2,9 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
+using CtfDeck.Terminal.Script;
+using CtfDeck.Terminal.Script.Repositories;
+using CtfDeck.Terminal.Script.Services;
 using CtfDeck.Terminal.Session;
 using CtfDeck.Terminal.Session.Data;
 using CtfDeck.Terminal.Session.Repositories;
@@ -32,6 +35,11 @@ public class WebSocketServer
     private readonly ActiveSessionManager _activeSessionManager;
     private readonly SessionMessageHandler _sessionMessageHandler;
 
+    // Custom script management
+    private readonly CustomScriptRepository _customScriptRepository;
+    private readonly CustomScriptService _customScriptService;
+    private readonly CustomScriptMessageHandler _customScriptMessageHandler;
+
     public WebSocketServer(string host = "localhost", int port = 8080, bool useInMemoryDb = false)
     {
         _httpListener = new HttpListener();
@@ -47,6 +55,11 @@ public class WebSocketServer
         _sessionService = new SessionService(_sessionRepository);
         _activeSessionManager = new ActiveSessionManager(_sessionService);
         _sessionMessageHandler = new SessionMessageHandler(_sessionService, _activeSessionManager);
+
+        // Initialize custom script management
+        _customScriptRepository = new CustomScriptRepository(_sessionDbContext);
+        _customScriptService = new CustomScriptService(_customScriptRepository);
+        _customScriptMessageHandler = new CustomScriptMessageHandler(_customScriptService);
     }
 
     public async Task StartAsync()
@@ -253,12 +266,13 @@ public class WebSocketServer
 
                         default:
                             {
-                                // Session messages and other typed messages
+                                // Session, custom script, and other typed messages
                                 var messageData = buffer.AsMemory(0, result.Count);
-                                if (!await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
-                                {
-                                    Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
-                                }
+                                if (await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                    break;
+                                if (await _customScriptMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                    break;
+                                Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
                                 break;
                             }
                     }

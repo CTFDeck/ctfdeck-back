@@ -33,7 +33,20 @@ public enum MessageType : byte
     SessionListResult = 23,
     SessionDeleteResult = 24,
     SessionUpdateResult = 25,
-    SessionOperationError = 29
+    SessionOperationError = 29,
+
+    // CustomScript requests (client → server)
+    CustomScriptCreate = 30,
+    CustomScriptUpdate = 31,
+    CustomScriptDelete = 32,
+    CustomScriptList = 33,
+
+    // CustomScript responses (server → client)
+    CustomScriptCreateResult = 40,
+    CustomScriptUpdateResult = 41,
+    CustomScriptDeleteResult = 42,
+    CustomScriptListResult = 43,
+    CustomScriptOperationError = 49
 }
 
 /// <summary>

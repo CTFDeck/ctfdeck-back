@@ -22,6 +22,15 @@ Main collection storing all session documents.
 | `_id` (Id) | GUID | Yes |
 | `Name` | String | No |
 
+### `customscripts`
+
+Collection storing reusable command templates (custom scripts).
+
+**Indexes:**
+| Field | Type | Unique |
+|-------|------|--------|
+| `_id` (Id) | GUID | Yes |
+
 ---
 
 ## Document Schemas
@@ -124,6 +133,42 @@ Stored as integer in database.
 
 ---
 
+### CustomScript
+
+Root document representing a reusable command template.
+
+```json
+{
+  "_id": "GUID",
+  "Name": "string",
+  "Category": "int (enum)",
+  "Template": "string"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | `Guid` | Primary key, auto-generated |
+| `Name` | `string` | Script display name |
+| `Category` | `ScriptCategory` | Category enum (stored as int) |
+| `Template` | `string` | Command template with placeholders (e.g., `nmap -sV {host}`) |
+
+---
+
+### ScriptCategory (Enum)
+
+Stored as integer in database.
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | `Discovery` | Network discovery and scanning |
+| 1 | `Web` | Web application testing |
+| 2 | `ReverseShell` | Reverse shell commands |
+| 3 | `Exploit` | Exploitation tools |
+| 4 | `Other` | Miscellaneous |
+
+---
+
 ## Example Document
 
 ```json
@@ -170,6 +215,17 @@ Stored as integer in database.
 }
 ```
 
+### CustomScript Example
+
+```json
+{
+  "_id": { "$guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+  "Name": "Full Nmap Scan",
+  "Category": 0,
+  "Template": "nmap -sV -sC -p- {host}"
+}
+```
+
 ---
 
 ## Configuration
@@ -182,6 +238,7 @@ BsonMapper.Global.EnumAsInteger = true;  // Store enums as integers
 BsonMapper.Global.Entity<Session>().Id(x => x.Id);
 BsonMapper.Global.Entity<HistoryEntry>().Id(x => x.Id);
 BsonMapper.Global.Entity<SessionTarget>().Id(x => x.Id);
+BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
 ```
 
 ### Connection Strings
@@ -207,10 +264,17 @@ Frontend (Electron/Angular)
          │                              ▼
          │                        SessionService
          │                              │
-         └── Session Commands ──────────┤
-                                        ▼
-                                 SessionRepository
-                                        │
+         ├── Session Commands ──────────┤
+         │                              ▼
+         │                       SessionRepository
+         │                              │
+         │                              ▼
+         ├── Script Commands ──► CustomScriptService
+         │                              │
+         │                              ▼
+         │                    CustomScriptRepository
+         │                              │
+         └──────────────────────────────┤
                                         ▼
                                  SessionDbContext
                                         │
@@ -236,7 +300,10 @@ Frontend (Electron/Angular)
 
 | Purpose | Path |
 |---------|------|
-| Models | `src/CtfDeck.Terminal/Session/Models/` |
+| Session Models | `src/CtfDeck.Terminal/Session/Models/` |
+| Script Models | `src/CtfDeck.Terminal/Script/Models/` |
 | DbContext | `src/CtfDeck.Terminal/Session/Data/SessionDbContext.cs` |
-| Repository | `src/CtfDeck.Terminal/Session/Repositories/SessionRepository.cs` |
-| Service | `src/CtfDeck.Terminal/Session/Services/SessionService.cs` |
+| Session Repository | `src/CtfDeck.Terminal/Session/Repositories/SessionRepository.cs` |
+| Script Repository | `src/CtfDeck.Terminal/Script/Repositories/CustomScriptRepository.cs` |
+| Session Service | `src/CtfDeck.Terminal/Session/Services/SessionService.cs` |
+| Script Service | `src/CtfDeck.Terminal/Script/Services/CustomScriptService.cs` |

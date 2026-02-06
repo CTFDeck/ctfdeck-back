@@ -75,6 +75,15 @@ All message types (1-byte prefix):
 | CommandKill | 4 | Client → Server | Cancel a running command |
 | CommandKillResult | 5 | Server → Client | Kill result |
 | CommandExecute | 6 | Client → Server | Execute a terminal command |
+| CustomScriptCreate | 30 | Client → Server | Create a custom script |
+| CustomScriptUpdate | 31 | Client → Server | Update a custom script |
+| CustomScriptDelete | 32 | Client → Server | Delete a custom script |
+| CustomScriptList | 33 | Client → Server | List all custom scripts |
+| CustomScriptCreateResult | 40 | Server → Client | Response to CustomScriptCreate |
+| CustomScriptUpdateResult | 41 | Server → Client | Response to CustomScriptUpdate |
+| CustomScriptDeleteResult | 42 | Server → Client | Response to CustomScriptDelete |
+| CustomScriptListResult | 43 | Server → Client | Response to CustomScriptList |
+| CustomScriptOperationError | 49 | Server → Client | Custom script error response |
 
 ## Error Codes
 
@@ -635,4 +644,153 @@ Sessions are persisted using LiteDB:
 |-------|-------|------------|
 | Session not found | Invalid session ID | Use SessionList to get valid IDs |
 | SetActive failed | Session doesn't exist | Create session first |
+| Database locked | Concurrent access | Retry operation |
+
+---
+
+## Custom Scripts Protocol
+
+### Overview
+
+The Custom Scripts Protocol extends the base protocol to support reusable command templates. Scripts are stored globally (not tied to a session) and contain a name, category, and command template string with placeholder variables (e.g., `{host}`, `{port}`).
+
+**Key Features:**
+- CRUD operations for custom scripts
+- Category-based organization
+- Template variables for dynamic command generation
+- LiteDB persistence on server side
+
+### Message Types
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| CustomScriptCreate | 30 | Client → Server | Create a new script |
+| CustomScriptUpdate | 31 | Client → Server | Update an existing script |
+| CustomScriptDelete | 32 | Client → Server | Delete a script |
+| CustomScriptList | 33 | Client → Server | List all scripts |
+| CustomScriptCreateResult | 40 | Server → Client | Response to CustomScriptCreate |
+| CustomScriptUpdateResult | 41 | Server → Client | Response to CustomScriptUpdate |
+| CustomScriptDeleteResult | 42 | Server → Client | Response to CustomScriptDelete |
+| CustomScriptListResult | 43 | Server → Client | Response to CustomScriptList |
+| CustomScriptOperationError | 49 | Server → Client | Error response |
+
+### Request Message Formats
+
+#### CustomScriptCreate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (30)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Name length (N)
+21     | N    | bytes[]   | Script name (UTF-8)
+21+N   | 4    | int32     | Category (enum as int)
+25+N   | 4    | int32     | Template length (T)
+29+N   | T    | bytes[]   | Template string (UTF-8)
+```
+
+#### CustomScriptUpdate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (31)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Script ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Script name (UTF-8)
+37+N   | 4    | int32     | Category (enum as int)
+41+N   | 4    | int32     | Template length (T)
+45+N   | T    | bytes[]   | Template string (UTF-8)
+```
+
+#### CustomScriptDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (32)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Script ID (UUID)
+```
+
+#### CustomScriptList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (33)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+### Response Message Formats
+
+#### CustomScriptCreateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (40)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created script ID (UUID)
+```
+
+#### CustomScriptUpdateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (41)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### CustomScriptDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (42)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### CustomScriptListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (43)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Script count (N)
+21     | ...  | Script[]    | Array of scripts
+```
+
+**CustomScript structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Script ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 4    | int32     | Category (enum as int)
+24+N   | 4    | int32     | Template length (T)
+28+N   | T    | bytes[]   | Template (UTF-8)
+```
+
+#### CustomScriptOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (49)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Script Categories
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Discovery | Network discovery and scanning |
+| 1 | Web | Web application testing |
+| 2 | ReverseShell | Reverse shell commands |
+| 3 | Exploit | Exploitation tools |
+| 4 | Other | Miscellaneous |
+
+### Storage
+
+Custom scripts are persisted using LiteDB:
+- **Collection:** `customscripts`
+- **Indexes:** `Id` (unique)
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Script not found | Invalid script ID on update/delete | Use CustomScriptList to get valid IDs |
 | Database locked | Concurrent access | Retry operation |
