@@ -109,9 +109,9 @@ public static class SessionProtocolSerializer
     {
         writer.WriteGuid(entry.Id);
         writer.WriteInt64(entry.Timestamp.Ticks);
-        writer.WriteString(entry.WorkingDirectory);
-        writer.WriteString(entry.Command);
-        writer.WriteString(entry.Output);
+        writer.WriteString(entry.WorkingDirectory ?? string.Empty);
+        writer.WriteString(entry.Command ?? string.Empty);
+        writer.WriteString(entry.Output ?? string.Empty);
         writer.WriteInt32(entry.ExitCode);
     }
 

@@ -65,7 +65,7 @@ public class SessionService
 
     private static string TruncateOutput(string output)
     {
-        if (string.IsNullOrEmpty(output)) return output;
+        if (string.IsNullOrEmpty(output)) return string.Empty;
 
         var byteCount = System.Text.Encoding.UTF8.GetByteCount(output);
         if (byteCount <= MaxOutputBytes) return output;
