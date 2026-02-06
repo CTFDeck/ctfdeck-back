@@ -225,42 +225,42 @@ public class WebSocketServer
                     switch (messageType)
                     {
                         case MessageType.CommandExecute:
-                        {
-                            // Copy buffer before dispatching (buffer is reused by receive loop)
-                            var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
-                            var command = WebSocketCommand.Deserialize(messageDataCopy);
-                            var trimmedCommand = command.Command.Trim();
+                            {
+                                // Copy buffer before dispatching (buffer is reused by receive loop)
+                                var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
+                                var command = WebSocketCommand.Deserialize(messageDataCopy);
+                                var trimmedCommand = command.Command.Trim();
 
-                            if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
-                            {
-                                // cd commands must be sequential — they modify shared cwd state
-                                await ProcessCdCommand(webSocket, command, clientId, sendLock);
+                                if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
+                                {
+                                    // cd commands must be sequential — they modify shared cwd state
+                                    await ProcessCdCommand(webSocket, command, clientId, sendLock);
+                                }
+                                else
+                                {
+                                    // Fire-and-forget for streaming commands — enables parallel execution
+                                    _ = Task.Run(() => ProcessStreamingCommandAsync(webSocket, command, clientId, sendLock));
+                                }
+                                break;
                             }
-                            else
-                            {
-                                // Fire-and-forget for streaming commands — enables parallel execution
-                                _ = Task.Run(() => ProcessStreamingCommandAsync(webSocket, command, clientId, sendLock));
-                            }
-                            break;
-                        }
 
                         case MessageType.CommandKill:
-                        {
-                            var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
-                            await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
-                            break;
-                        }
+                            {
+                                var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
+                                await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
+                                break;
+                            }
 
                         default:
-                        {
-                            // Session messages and other typed messages
-                            var messageData = buffer.AsMemory(0, result.Count);
-                            if (!await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
                             {
-                                Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
+                                // Session messages and other typed messages
+                                var messageData = buffer.AsMemory(0, result.Count);
+                                if (!await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                {
+                                    Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
+                                }
+                                break;
                             }
-                            break;
-                        }
                     }
                 }
             }
