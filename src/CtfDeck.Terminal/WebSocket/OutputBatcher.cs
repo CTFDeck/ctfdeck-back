@@ -15,15 +15,19 @@ public sealed class OutputBatcher : IAsyncDisposable
     private readonly Channel<(string Data, bool IsError)> _channel;
     private readonly Task _processingTask;
     private readonly CancellationTokenSource _cts;
+    private readonly StringBuilder _accumulatedOutput = new();
+    private readonly object _outputLock = new();
+    private readonly SemaphoreSlim? _sendLock;
 
     // Batching configuration
     private const int MaxBatchSize = 8192;  // 8KB max before force-send
     private const int BatchDelayMs = 5;      // 5ms max delay for batching (200Hz)
 
-    public OutputBatcher(System.Net.WebSockets.WebSocket socket, Guid messageId)
+    public OutputBatcher(System.Net.WebSockets.WebSocket socket, Guid messageId, SemaphoreSlim? sendLock = null)
     {
         _socket = socket;
         _messageId = messageId;
+        _sendLock = sendLock;
         _cts = new CancellationTokenSource();
 
         // Unbounded channel for maximum throughput
@@ -115,6 +119,12 @@ public sealed class OutputBatcher : IAsyncDisposable
         var batch = isError ? stderr : stdout;
         batch.Append(data);
 
+        // Accumulate all output for session recording
+        lock (_outputLock)
+        {
+            _accumulatedOutput.Append(data);
+        }
+
         if (batch.Length >= MaxBatchSize)
         {
             _ = FlushBatchAsync(batch, isError, ct);
@@ -136,13 +146,28 @@ public sealed class OutputBatcher : IAsyncDisposable
         var messageType = isError ? MessageType.StreamError : MessageType.StreamOutput;
         var data = BinaryProtocolSerializer.SerializeStreamChunk(messageType, _messageId, batch.ToString());
 
-        await _socket.SendAsync(data, WebSocketMessageType.Binary, true, ct);
+        if (_sendLock != null)
+        {
+            await _sendLock.WaitAsync(ct);
+            try
+            {
+                await _socket.SendAsync(data, WebSocketMessageType.Binary, true, ct);
+            }
+            finally
+            {
+                _sendLock.Release();
+            }
+        }
+        else
+        {
+            await _socket.SendAsync(data, WebSocketMessageType.Binary, true, ct);
+        }
     }
 
     /// <summary>
-    /// Complete batching and send stream end message
+    /// Complete batching and send stream end message. Returns accumulated output for session recording.
     /// </summary>
-    public async Task CompleteAsync(int exitCode, string workingDirectory)
+    public async Task<string> CompleteAsync(int exitCode, string workingDirectory)
     {
         _channel.Writer.Complete();
         await _processingTask;
@@ -150,7 +175,28 @@ public sealed class OutputBatcher : IAsyncDisposable
         if (_socket.State == WebSocketState.Open)
         {
             var data = BinaryProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
-            await _socket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
+
+            if (_sendLock != null)
+            {
+                await _sendLock.WaitAsync(CancellationToken.None);
+                try
+                {
+                    await _socket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
+                }
+                finally
+                {
+                    _sendLock.Release();
+                }
+            }
+            else
+            {
+                await _socket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
+            }
+        }
+
+        lock (_outputLock)
+        {
+            return _accumulatedOutput.ToString();
         }
     }
 

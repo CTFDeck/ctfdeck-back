@@ -29,57 +29,81 @@ Sec-WebSocket-Version: 13
 
 All messages are transmitted as binary WebSocket frames using little-endian byte ordering.
 
-### Command Message
+All messages start with a 1-byte **type prefix** that identifies the message kind. This applies to every message in the protocol (commands, responses, session operations, etc.).
+
+### Command Message (type = 6)
 
 Clients send commands using the following binary structure:
 
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
-0      | 4    | int32     | Command length (N)
-4      | N    | bytes[]   | Command string (UTF-8)
-4+N    | 16   | bytes[16] | Message ID (UUID)
+0      | 1    | byte      | Message type (6 = CommandExecute)
+1      | 4    | int32     | Command length (N)
+5      | N    | bytes[]   | Command string (UTF-8)
+5+N    | 16   | bytes[16] | Message ID (UUID)
 ```
 
-**Total Size:** 4 + N + 16 bytes
+**Total Size:** 1 + 4 + N + 16 bytes
 
-### Response Message
+### Response Message (type = 0)
 
 Servers respond with the following binary structure:
 
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
-0      | 4    | int32     | Exit code
-4      | 4    | int32     | Output length (M)
-8      | M    | bytes[]   | Output string (UTF-8)
-8+M    | 4    | int32     | Error length (K)
-8+M+K  | K    | bytes[]   | Error string (UTF-8)
-8+M+K+4|16   | bytes[16] | Message ID (UUID)
+0      | 1    | byte      | Message type (0 = CompleteResponse)
+1      | 4    | int32     | Exit code
+5      | 4    | int32     | Output length (M)
+9      | M    | bytes[]   | Output string (UTF-8)
+9+M    | 4    | int32     | Error length (K)
+9+M+4  | K    | bytes[]   | Error string (UTF-8)
+9+M+K+4| 4   | int32     | Working directory length (W)
+9+M+K+8| W   | bytes[]   | Working directory (UTF-8)
+9+M+K+W+8|16 | bytes[16] | Message ID (UUID)
 ```
-
-**Total Size:** 8 + M + K + 16 bytes
 
 ## Message Types
 
-### Command Message
+All message types (1-byte prefix):
 
-Sent by clients to execute shell commands.
-
-**Fields:**
-- `command_length`: Length of the command string in bytes
-- `command_bytes`: UTF-8 encoded command string
-- `message_id`: UUID for request-response correlation
-
-### Response Message
-
-Sent by servers with command execution results.
-
-**Fields:**
-- `exit_code`: Process exit code (0 = success, non-zero = error)
-- `output_length`: Length of stdout output in bytes
-- `output_bytes`: UTF-8 encoded stdout output
-- `error_length`: Length of stderr output in bytes
-- `error_bytes`: UTF-8 encoded stderr output
-- `message_id`: UUID matching the original command
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| CompleteResponse | 0 | Server → Client | Complete command result (cd) |
+| StreamOutput | 1 | Server → Client | Streaming stdout chunk |
+| StreamError | 2 | Server → Client | Streaming stderr chunk |
+| StreamEnd | 3 | Server → Client | Stream finished (exitCode + cwd) |
+| CommandKill | 4 | Client → Server | Cancel a running command |
+| CommandKillResult | 5 | Server → Client | Kill result |
+| CommandExecute | 6 | Client → Server | Execute a terminal command |
+| SessionCreate | 10 | Client → Server | Create a new session |
+| SessionSetActive | 11 | Client → Server | Set active session for recording |
+| SessionLoad | 12 | Client → Server | Load full session data |
+| SessionList | 13 | Client → Server | List all sessions (metadata) |
+| SessionDelete | 14 | Client → Server | Delete a session |
+| SessionUpdateTargets | 15 | Client → Server | Bulk sync targets to session |
+| SessionUpdate | 16 | Client → Server | Update session name and description |
+| SessionAddTarget | 17 | Client → Server | Add a single target to session |
+| SessionDeleteTarget | 18 | Client → Server | Delete a single target from session |
+| SessionEditTarget | 19 | Client → Server | Edit a single target in session |
+| SessionCreateResult | 20 | Server → Client | Response to SessionCreate |
+| SessionSetActiveResult | 21 | Server → Client | Response to SessionSetActive |
+| SessionLoadResult | 22 | Server → Client | Response to SessionLoad |
+| SessionListResult | 23 | Server → Client | Response to SessionList |
+| SessionDeleteResult | 24 | Server → Client | Response to SessionDelete |
+| SessionUpdateResult | 25 | Server → Client | Response to SessionUpdate |
+| SessionAddTargetResult | 26 | Server → Client | Response to SessionAddTarget |
+| SessionDeleteTargetResult | 27 | Server → Client | Response to SessionDeleteTarget |
+| SessionEditTargetResult | 28 | Server → Client | Response to SessionEditTarget |
+| SessionOperationError | 29 | Server → Client | Session error response |
+| CustomScriptCreate | 30 | Client → Server | Create a custom script |
+| CustomScriptUpdate | 31 | Client → Server | Update a custom script |
+| CustomScriptDelete | 32 | Client → Server | Delete a custom script |
+| CustomScriptList | 33 | Client → Server | List all custom scripts |
+| CustomScriptCreateResult | 40 | Server → Client | Response to CustomScriptCreate |
+| CustomScriptUpdateResult | 41 | Server → Client | Response to CustomScriptUpdate |
+| CustomScriptDeleteResult | 42 | Server → Client | Response to CustomScriptDelete |
+| CustomScriptListResult | 43 | Server → Client | Response to CustomScriptList |
+| CustomScriptOperationError | 49 | Server → Client | Custom script error response |
 
 ## Error Codes
 
@@ -149,6 +173,7 @@ public class CtfDeckClient : IDisposable
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
 
+        writer.Write((byte)6); // CommandExecute
         writer.Write(commandBytes.Length);
         writer.Write(commandBytes);
         writer.Write(messageIdBytes);
@@ -313,3 +338,554 @@ wscat -c "ws://localhost:42712"
 - Verify UTF-8 encoding
 - Ensure proper message boundaries
 - Validate UUID format
+
+---
+
+## Parallel Command Execution
+
+The server supports executing multiple commands concurrently. When a client sends a new command while another is still running, both execute in parallel with independent streaming outputs. Each command is identified by its unique `messageId`.
+
+**Behavior:**
+- Streaming commands (ls, cat, nmap, etc.) are dispatched in background tasks — fire-and-forget
+- `cd` commands remain sequential (they modify shared working directory state)
+- Session and CommandKill messages are processed inline in the message loop
+- `WebSocket.SendAsync` calls are serialized per-client via a `SemaphoreSlim` (not thread-safe natively)
+
+### CommandKill
+
+Allows the client to cancel a running command by its `messageId`.
+
+#### CommandKill (client → server)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (4)
+1      | 16   | bytes[16] | Command ID (UUID of the command to kill)
+```
+
+**Total Size:** 17 bytes
+
+#### CommandKillResult (server → client)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (5)
+1      | 16   | bytes[16] | Command ID (UUID)
+17     | 1    | byte      | Success (1 = killed, 0 = not found)
+```
+
+**Total Size:** 18 bytes
+
+**Notes:**
+- When a command is killed, it sends a `StreamEnd` message with `exitCode = -1` before the `CommandKillResult`
+- If the command has already finished, `success` will be `0`
+- On client disconnect, all active commands for that client are automatically cancelled
+
+---
+
+## Session Management Protocol
+
+### Overview
+
+The Session Management Protocol extends the base terminal protocol to support persistent sessions. Sessions store command history and targets, enabling users to save and restore their CTF work.
+
+**Key Features:**
+- Automatic command history recording
+- Target management (IP, ports, challenge types)
+- Output truncation (10KB max per command)
+- LiteDB persistence on server side
+
+### Message Types
+
+All session messages use a 1-byte type prefix to differentiate from terminal messages.
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| SessionCreate | 10 | Client → Server | Create a new session |
+| SessionSetActive | 11 | Client → Server | Set active session for recording |
+| SessionLoad | 12 | Client → Server | Load full session data |
+| SessionList | 13 | Client → Server | List all sessions (metadata) |
+| SessionDelete | 14 | Client → Server | Delete a session |
+| SessionUpdateTargets | 15 | Client → Server | Bulk sync targets to session |
+| SessionUpdate | 16 | Client → Server | Update session name and description |
+| SessionAddTarget | 17 | Client → Server | Add a single target to session |
+| SessionDeleteTarget | 18 | Client → Server | Delete a single target from session |
+| SessionEditTarget | 19 | Client → Server | Edit a single target in session |
+| SessionCreateResult | 20 | Server → Client | Response to SessionCreate |
+| SessionSetActiveResult | 21 | Server → Client | Response to SessionSetActive |
+| SessionLoadResult | 22 | Server → Client | Response to SessionLoad |
+| SessionListResult | 23 | Server → Client | Response to SessionList |
+| SessionDeleteResult | 24 | Server → Client | Response to SessionDelete |
+| SessionUpdateResult | 25 | Server → Client | Response to SessionUpdate |
+| SessionAddTargetResult | 26 | Server → Client | Response to SessionAddTarget |
+| SessionDeleteTargetResult | 27 | Server → Client | Response to SessionDeleteTarget |
+| SessionEditTargetResult | 28 | Server → Client | Response to SessionEditTarget |
+| SessionOperationError | 29 | Server → Client | Error response |
+
+### Request Message Formats
+
+#### SessionCreate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (10)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Name length (N)
+21     | N    | bytes[]   | Session name (UTF-8)
+```
+
+#### SessionSetActive
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (11)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID, empty GUID to clear)
+```
+
+#### SessionLoad
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (12)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+```
+
+#### SessionList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (13)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+#### SessionDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (14)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+```
+
+#### SessionUpdateTargets
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (15)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Target count (N)
+37     | ...  | Target[]  | Array of targets
+```
+
+**Target structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Target ID (UUID)
+16     | 4    | int32     | Address length (A)
+20     | A    | bytes[]   | Address (UTF-8)
+20+A   | 4    | int32     | Port (-1 if null)
+24+A   | 4    | int32     | Name length (N)
+28+A   | N    | bytes[]   | Name (UTF-8)
+28+A+N | 4    | int32     | Description length (D)
+32+A+N | D    | bytes[]   | Description (UTF-8)
+32+A+N+D| 4   | int32     | Target type (enum)
+```
+
+#### SessionUpdate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (16)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Session name (UTF-8)
+37+N   | 4    | int32     | Description length (D)
+41+N   | D    | bytes[]   | Session description (UTF-8)
+```
+
+#### SessionAddTarget
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (17)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Address length (A)
+37     | A    | bytes[]   | Address (UTF-8)
+37+A   | 4    | int32     | Port (-1 if null)
+41+A   | 4    | int32     | Name length (N)
+45+A   | N    | bytes[]   | Name (UTF-8)
+45+A+N | 4    | int32     | Description length (D)
+49+A+N | D    | bytes[]   | Description (UTF-8)
+49+A+N+D| 4   | int32     | Target type (enum)
+```
+
+#### SessionDeleteTarget
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (18)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 16   | bytes[16] | Target ID (UUID)
+```
+
+#### SessionEditTarget
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (19)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 16   | bytes[16] | Target ID (UUID)
+49     | 4    | int32     | Address length (A)
+53     | A    | bytes[]   | Address (UTF-8)
+53+A   | 4    | int32     | Port (-1 if null)
+57+A   | 4    | int32     | Name length (N)
+61+A   | N    | bytes[]   | Name (UTF-8)
+61+A+N | 4    | int32     | Description length (D)
+65+A+N | D    | bytes[]   | Description (UTF-8)
+65+A+N+D| 4   | int32     | Target type (enum)
+```
+
+### Response Message Formats
+
+#### SessionCreateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (20)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created session ID (UUID)
+```
+
+#### SessionSetActiveResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (21)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionLoadResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (22)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | ...  | Session   | Session data (if success)
+```
+
+**Session structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Session ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 4    | int32     | Description length (D)
+24+N   | D    | bytes[]   | Description (UTF-8)
+24+N+D | 8    | int64     | CreatedAt (.NET ticks)
+32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
+40+N+D | 4    | int32     | History count (H)
+44+N+D | ...  | Entry[]   | History entries
+...    | 4    | int32     | Target count (T)
+...    | ...  | Target[]  | Targets
+```
+
+**HistoryEntry structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Entry ID (UUID)
+16     | 8    | int64     | Timestamp (.NET ticks)
+24     | 4    | int32     | WorkingDirectory length (W)
+28     | W    | bytes[]   | WorkingDirectory (UTF-8)
+28+W   | 4    | int32     | Command length (C)
+32+W   | C    | bytes[]   | Command (UTF-8)
+32+W+C | 4    | int32     | Output length (O)
+36+W+C | O    | bytes[]   | Output (UTF-8, max 10KB)
+36+W+C+O| 4   | int32     | Exit code
+```
+
+#### SessionListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (23)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Session count (N)
+21     | ...  | Metadata[]  | Session metadata array
+```
+
+**SessionMetadata structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Session ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 4    | int32     | Description length (D)
+24+N   | D    | bytes[]   | Description (UTF-8)
+24+N+D | 8    | int64     | CreatedAt (.NET ticks)
+32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
+40+N+D | 4    | int32     | History count
+44+N+D | 4    | int32     | Target count
+```
+
+#### SessionDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (24)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionUpdateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (25)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionAddTargetResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (26)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created target ID (UUID)
+```
+
+#### SessionDeleteTargetResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (27)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionEditTargetResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (28)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### SessionOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (29)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Target Types
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Unknown | Unspecified challenge type |
+| 1 | Web | Web exploitation |
+| 2 | Pwn | Binary exploitation |
+| 3 | Crypto | Cryptography |
+| 4 | Forensics | Digital forensics |
+| 5 | Reverse | Reverse engineering |
+| 6 | Misc | Miscellaneous |
+
+### Automatic Command Recording
+
+When a session is active, the server automatically records every command executed:
+
+**Recording behavior:**
+- Commands are recorded with timestamp, working directory, and exit code
+- Output is truncated to 10KB maximum (with `\n[truncated]` suffix)
+- Both streaming and non-streaming commands are recorded
+- Recording happens after command completion
+
+### Output Truncation
+
+To prevent database bloat, command outputs are limited:
+
+```
+MAX_OUTPUT_SIZE = 10 * 1024  // 10KB
+TRUNCATED_SUFFIX = "\n[truncated]"
+
+if output.byteLength > MAX_OUTPUT_SIZE:
+    output = output[0:MAX_OUTPUT_SIZE - TRUNCATED_SUFFIX.length] + TRUNCATED_SUFFIX
+```
+
+### DateTime Encoding
+
+Timestamps use .NET ticks (100-nanosecond intervals since 0001-01-01):
+
+```javascript
+// JavaScript: Convert ticks to Date
+function ticksToDate(ticks) {
+    const epochDiff = BigInt('621355968000000000');
+    const ticksPerMs = BigInt(10000);
+    const ms = Number((ticks - epochDiff) / ticksPerMs);
+    return new Date(ms);
+}
+
+// JavaScript: Convert Date to ticks
+function dateToTicks(date) {
+    const epochDiff = BigInt('621355968000000000');
+    const ticksPerMs = BigInt(10000);
+    return epochDiff + BigInt(date.getTime()) * ticksPerMs;
+}
+```
+
+### Storage
+
+Sessions are persisted using LiteDB:
+- **File location:** `ctfdeck_sessions.db` (same directory as executable)
+- **Collections:** `sessions`
+- **Indexes:** `Id` (unique), `Name`
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Session not found | Invalid session ID | Use SessionList to get valid IDs |
+| SetActive failed | Session doesn't exist | Create session first |
+| Database locked | Concurrent access | Retry operation |
+
+---
+
+## Custom Scripts Protocol
+
+### Overview
+
+The Custom Scripts Protocol extends the base protocol to support reusable command templates. Scripts are stored globally (not tied to a session) and contain a name, category, and command template string with placeholder variables (e.g., `{host}`, `{port}`).
+
+**Key Features:**
+- CRUD operations for custom scripts
+- Category-based organization
+- Template variables for dynamic command generation
+- LiteDB persistence on server side
+
+### Message Types
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| CustomScriptCreate | 30 | Client → Server | Create a new script |
+| CustomScriptUpdate | 31 | Client → Server | Update an existing script |
+| CustomScriptDelete | 32 | Client → Server | Delete a script |
+| CustomScriptList | 33 | Client → Server | List all scripts |
+| CustomScriptCreateResult | 40 | Server → Client | Response to CustomScriptCreate |
+| CustomScriptUpdateResult | 41 | Server → Client | Response to CustomScriptUpdate |
+| CustomScriptDeleteResult | 42 | Server → Client | Response to CustomScriptDelete |
+| CustomScriptListResult | 43 | Server → Client | Response to CustomScriptList |
+| CustomScriptOperationError | 49 | Server → Client | Error response |
+
+### Request Message Formats
+
+#### CustomScriptCreate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (30)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Name length (N)
+21     | N    | bytes[]   | Script name (UTF-8)
+21+N   | 4    | int32     | Category (enum as int)
+25+N   | 4    | int32     | Template length (T)
+29+N   | T    | bytes[]   | Template string (UTF-8)
+```
+
+#### CustomScriptUpdate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (31)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Script ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Script name (UTF-8)
+37+N   | 4    | int32     | Category (enum as int)
+41+N   | 4    | int32     | Template length (T)
+45+N   | T    | bytes[]   | Template string (UTF-8)
+```
+
+#### CustomScriptDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (32)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Script ID (UUID)
+```
+
+#### CustomScriptList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (33)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+### Response Message Formats
+
+#### CustomScriptCreateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (40)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created script ID (UUID)
+```
+
+#### CustomScriptUpdateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (41)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### CustomScriptDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (42)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### CustomScriptListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (43)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Script count (N)
+21     | ...  | Script[]    | Array of scripts
+```
+
+**CustomScript structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Script ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 4    | int32     | Category (enum as int)
+24+N   | 4    | int32     | Template length (T)
+28+N   | T    | bytes[]   | Template (UTF-8)
+```
+
+#### CustomScriptOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (49)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Script Categories
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Discovery | Network discovery and scanning |
+| 1 | Web | Web application testing |
+| 2 | ReverseShell | Reverse shell commands |
+| 3 | Exploit | Exploitation tools |
+| 4 | Other | Miscellaneous |
+
+### Storage
+
+Custom scripts are persisted using LiteDB:
+- **Collection:** `customscripts`
+- **Indexes:** `Id` (unique)
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Script not found | Invalid script ID on update/delete | Use CustomScriptList to get valid IDs |
+| Database locked | Concurrent access | Retry operation |

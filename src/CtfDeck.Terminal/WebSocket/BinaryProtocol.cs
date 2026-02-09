@@ -8,14 +8,56 @@ namespace CtfDeck.Terminal.WebSocket;
 /// </summary>
 public enum MessageType : byte
 {
+    // Terminal messages
     CompleteResponse = 0,
     StreamOutput = 1,
     StreamError = 2,
-    StreamEnd = 3
+    StreamEnd = 3,
+    CommandKill = 4,
+    CommandKillResult = 5,
+    CommandExecute = 6,
+
+    // Session requests (client → server)
+    SessionCreate = 10,
+    SessionSetActive = 11,
+    SessionLoad = 12,
+    SessionList = 13,
+    SessionDelete = 14,
+    SessionUpdateTargets = 15,
+    SessionUpdate = 16,
+    SessionAddTarget = 17,
+    SessionDeleteTarget = 18,
+    SessionEditTarget = 19,
+
+    // Session responses (server → client)
+    SessionCreateResult = 20,
+    SessionSetActiveResult = 21,
+    SessionLoadResult = 22,
+    SessionListResult = 23,
+    SessionDeleteResult = 24,
+    SessionUpdateResult = 25,
+    SessionAddTargetResult = 26,
+    SessionDeleteTargetResult = 27,
+    SessionEditTargetResult = 28,
+    SessionOperationError = 29,
+
+    // CustomScript requests (client → server)
+    CustomScriptCreate = 30,
+    CustomScriptUpdate = 31,
+    CustomScriptDelete = 32,
+    CustomScriptList = 33,
+
+    // CustomScript responses (server → client)
+    CustomScriptCreateResult = 40,
+    CustomScriptUpdateResult = 41,
+    CustomScriptDeleteResult = 42,
+    CustomScriptListResult = 43,
+    CustomScriptOperationError = 49
 }
 
 /// <summary>
 /// High-performance WebSocket command deserialization
+/// Format: [1B type:6][4B cmdLen][cmdBytes][16B UUID]
 /// </summary>
 public readonly ref struct WebSocketCommandReader
 {
@@ -25,12 +67,27 @@ public readonly ref struct WebSocketCommandReader
 
     public WebSocketCommandReader(ReadOnlySpan<byte> data)
     {
-        CommandLength = BitConverter.ToInt32(data[..4]);
-        CommandBytes = data.Slice(4, CommandLength);
-        MessageId = new Guid(data.Slice(4 + CommandLength, 16));
+        // Skip type byte at data[0]
+        CommandLength = BitConverter.ToInt32(data.Slice(1, 4));
+        CommandBytes = data.Slice(5, CommandLength);
+        MessageId = new Guid(data.Slice(5 + CommandLength, 16));
     }
 
     public string GetCommand() => Encoding.UTF8.GetString(CommandBytes);
+}
+
+/// <summary>
+/// High-performance CommandKill message deserialization
+/// Format: [1B type:4][16B commandId]
+/// </summary>
+public readonly ref struct CommandKillReader
+{
+    public readonly Guid CommandId;
+
+    public CommandKillReader(ReadOnlySpan<byte> data)
+    {
+        CommandId = new Guid(data.Slice(1, 16));
+    }
 }
 
 /// <summary>
@@ -63,6 +120,13 @@ public sealed class PooledBufferWriter : IDisposable
         EnsureCapacity(4);
         BitConverter.TryWriteBytes(_buffer.AsSpan(_position), value);
         _position += 4;
+    }
+
+    public void WriteInt64(long value)
+    {
+        EnsureCapacity(8);
+        BitConverter.TryWriteBytes(_buffer.AsSpan(_position), value);
+        _position += 8;
     }
 
     public void WriteGuid(Guid value)
@@ -150,6 +214,19 @@ public static class BinaryProtocolSerializer
     }
 
     /// <summary>
+    /// Serialize a command kill result
+    /// Format: [1B type:5][16B commandId][1B success]
+    /// </summary>
+    public static byte[] SerializeCommandKillResult(Guid commandId, bool success)
+    {
+        using var writer = new PooledBufferWriter(18);
+        writer.WriteByte((byte)MessageType.CommandKillResult);
+        writer.WriteGuid(commandId);
+        writer.WriteByte(success ? (byte)1 : (byte)0);
+        return writer.ToArray();
+    }
+
+    /// <summary>
     /// Serialize a complete response (for cd and simple commands)
     /// </summary>
     public static byte[] SerializeCompleteResponse(
@@ -197,6 +274,7 @@ public struct WebSocketCommand
     public byte[] Serialize()
     {
         using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.CommandExecute);
         writer.WriteInt32(CommandLength);
         writer.WriteBytes(CommandBytes);
         writer.WriteGuid(MessageId);
