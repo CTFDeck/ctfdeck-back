@@ -15,76 +15,139 @@ public static class ProcessRunner
         Func<StreamWriter, Task>? writeStdin = null,
         CancellationToken cancellationToken = default)
     {
-        var escaped = command.Replace("\"", "\\\"");
+        using var process = CreateProcess(shell, command, workingDirectory);
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = shell.Executable,
-            Arguments = $"{shell.ArgumentPrefix} \"{escaped}\"",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var p = new Process { StartInfo = psi };
+        var outputBuilder = new StringBuilder();
+        var errorBuilder = new StringBuilder();
 
         try
         {
-            p.Start();
+            process.Start();
 
+            // If sudoPassword was provided, write it ASAP to stdin
             if (writeStdin != null)
             {
                 try
                 {
-                    await writeStdin(p.StandardInput);
-                    await p.StandardInput.FlushAsync();
-                    p.StandardInput.Close();
+                    await writeStdin(process.StandardInput);
+                    await process.StandardInput.FlushAsync();
+                    process.StandardInput.Close();
                 }
-                catch { }
+                catch { /* ignore */ }
             }
 
-            var stdoutTask = PumpAsync(p.StandardOutput, onOutput, isError: false, cancellationToken);
-            var stderrTask = PumpAsync(p.StandardError, onOutput, isError: true, cancellationToken);
-
             using var timeoutCts = new CancellationTokenSource(DefaultTimeout);
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-            try { await p.WaitForExitAsync(linked.Token); }
-            catch { try { p.Kill(entireProcessTree: true); } catch { } }
+            var stdoutTask = PumpAsync(process.StandardOutput, outputBuilder, onOutput, isError: false, linkedCts.Token);
+            var stderrTask = PumpAsync(process.StandardError, errorBuilder, onOutput, isError: true, linkedCts.Token);
+
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                KillProcess(process);
+                return new CommandResult
+                {
+                    Output = outputBuilder.ToString(),
+                    Error = "Command timed out",
+                    ExitCode = -1,
+                    WorkingDirectory = workingDirectory
+                };
+            }
 
             await Task.WhenAll(stdoutTask, stderrTask);
 
-            var exit = p.HasExited ? p.ExitCode : -1;
+            var exitCode = process.ExitCode;
+
             return new CommandResult
             {
-                ExitCode = exit,
-                Output = "",   // ton OutputBatcher gère déjà l’affichage, sinon accumule ici
-                Error = exit == -1 ? "Command timed out" : "",
+                Output = outputBuilder.ToString(),
+                Error = errorBuilder.ToString(),
+                ExitCode = exitCode,
                 WorkingDirectory = workingDirectory
             };
         }
         catch (Exception ex)
         {
-            try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
+            KillProcess(process);
             return CommandResult.Failure(workingDirectory, ex.Message, -1);
         }
     }
 
     private static async Task PumpAsync(
         StreamReader reader,
+        StringBuilder builder,
         Func<string, bool, Task> onOutput,
         bool isError,
         CancellationToken ct)
     {
-        char[] buf = new char[4096];
-        while (!reader.EndOfStream && !ct.IsCancellationRequested)
+        var buffer = new char[4096];
+
+        while (!ct.IsCancellationRequested)
         {
-            var read = await reader.ReadAsync(buf, 0, buf.Length);
-            if (read > 0)
-                await onOutput(new string(buf, 0, read), isError);
+            int read;
+            try
+            {
+                read = await reader.ReadAsync(buffer, 0, buffer.Length);
+            }
+            catch
+            {
+                break;
+            }
+
+            if (read <= 0) break;
+
+            var chunk = new string(buffer, 0, read);
+            builder.Append(chunk);
+
+            try
+            {
+                await onOutput(chunk, isError);
+            }
+            catch
+            { /* ignore */ }
         }
+    }
+
+    private static Process CreateProcess(ShellConfig shell, string command, string workingDirectory)
+    {
+        var escapedCommand = command.Replace("\"", "\\\"");
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = shell.Executable,
+            Arguments = $"{shell.ArgumentPrefix} \"{escapedCommand}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = workingDirectory
+        };
+
+        ConfigureEnvironment(startInfo);
+
+        return new Process { StartInfo = startInfo };
+    }
+
+    private static void ConfigureEnvironment(ProcessStartInfo startInfo)
+    {
+        startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "";
+        startInfo.Environment["TERM"] = "xterm-256color";
+        startInfo.Environment["COLORTERM"] = "truecolor";
+        startInfo.Environment["CLICOLOR_FORCE"] = "1";
+    }
+
+    private static void KillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch { }
     }
 }
