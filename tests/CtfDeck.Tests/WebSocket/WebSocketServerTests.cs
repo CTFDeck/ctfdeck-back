@@ -11,7 +11,7 @@ public class WebSocketServerTests
     public void Constructor_ShouldInitializeCorrectly()
     {
         // Arrange & Act
-        var server = new WebSocketServer();
+        var server = new WebSocketServer(useInMemoryDb: true);
 
         // Assert
         server.IsRunning.Should().BeFalse();
@@ -22,7 +22,7 @@ public class WebSocketServerTests
     public void Constructor_WithCustomHostAndPort_ShouldInitializeCorrectly()
     {
         // Arrange & Act
-        var server = new WebSocketServer("127.0.0.1", 9999);
+        var server = new WebSocketServer("127.0.0.1", 9999, useInMemoryDb: true);
 
         // Assert
         server.IsRunning.Should().BeFalse();
@@ -33,7 +33,7 @@ public class WebSocketServerTests
     public void IsRunning_ShouldReflectServerState()
     {
         // Arrange
-        var server = new WebSocketServer();
+        var server = new WebSocketServer(useInMemoryDb: true);
 
         // Assert - Initial state
         server.IsRunning.Should().BeFalse();
@@ -43,7 +43,7 @@ public class WebSocketServerTests
     public void ConnectedClientCount_ShouldReturnZeroInitially()
     {
         // Arrange
-        var server = new WebSocketServer();
+        var server = new WebSocketServer(useInMemoryDb: true);
 
         // Act & Assert
         server.ConnectedClientCount.Should().Be(0);
@@ -53,7 +53,7 @@ public class WebSocketServerTests
     public async Task StartAsync_ShouldStartSuccessfully()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8081); // Use different port to avoid conflicts
+        var server = new WebSocketServer("localhost", 8081, useInMemoryDb: true); // Use different port to avoid conflicts
 
         try
         {
@@ -81,7 +81,7 @@ public class WebSocketServerTests
     public async Task StopAsync_ShouldStopCleanly()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8082);
+        var server = new WebSocketServer("localhost", 8082, useInMemoryDb: true);
         await server.StartAsync();
 
         // Act
@@ -95,7 +95,7 @@ public class WebSocketServerTests
     public async Task StopAsync_WhenNotRunning_ShouldReturn()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8083);
+        var server = new WebSocketServer("localhost", 8083, useInMemoryDb: true);
 
         // Act & Assert - Should not throw
         await server.StopAsync();
@@ -106,7 +106,7 @@ public class WebSocketServerTests
     public async Task StartAsync_WhenAlreadyRunning_ShouldReturn()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8084);
+        var server = new WebSocketServer("localhost", 8084, useInMemoryDb: true);
         await server.StartAsync();
 
         try
@@ -128,7 +128,7 @@ public class WebSocketServerTests
     public async Task StartStopCycle_ShouldMaintainCorrectState()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8085);
+        var server = new WebSocketServer("localhost", 8085, useInMemoryDb: true);
 
         // Act & Assert
         server.IsRunning.Should().BeFalse();
@@ -150,7 +150,7 @@ public class WebSocketServerTests
     public async Task MultipleStops_WhenNotRunning_ShouldNotThrow()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8086);
+        var server = new WebSocketServer("localhost", 8086, useInMemoryDb: true);
 
         // Act & Assert
         await server.StopAsync();
@@ -168,7 +168,7 @@ public class WebSocketServerTests
 
         foreach (var port in ports)
         {
-            var server = new WebSocketServer("localhost", port);
+            var server = new WebSocketServer("localhost", port, useInMemoryDb: true);
 
             try
             {
@@ -194,7 +194,7 @@ public class WebSocketServerTests
     public async Task ServerProperties_AfterStartStop_ShouldMaintainConsistency()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8090);
+        var server = new WebSocketServer("localhost", 8090, useInMemoryDb: true);
 
         try
         {
@@ -225,7 +225,7 @@ public class WebSocketServerTests
     public void Constructor_WithDifferentHosts_ShouldInitializeCorrectly(string host)
     {
         // Arrange & Act
-        var server = new WebSocketServer(host, 8091);
+        var server = new WebSocketServer(host, 8091, useInMemoryDb: true);
 
         // Assert
         server.IsRunning.Should().BeFalse();
@@ -240,7 +240,7 @@ public class WebSocketServerTests
     public void Constructor_WithValidPorts_ShouldInitializeCorrectly(int port)
     {
         // Arrange & Act
-        var server = new WebSocketServer("localhost", port);
+        var server = new WebSocketServer("localhost", port, useInMemoryDb: true);
 
         // Assert
         server.IsRunning.Should().BeFalse();
@@ -251,7 +251,7 @@ public class WebSocketServerTests
     public async Task StartAsync_WithInvalidPort_ShouldThrowException()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 99999); // Invalid port
+        var server = new WebSocketServer("localhost", 99999, useInMemoryDb: true); // Invalid port
 
         // Act & Assert
         await Assert.ThrowsAsync<HttpListenerException>(() => server.StartAsync());
@@ -262,7 +262,7 @@ public class WebSocketServerTests
     public async Task StartStopStressTest_ShouldMaintainStability()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8092);
+        var server = new WebSocketServer("localhost", 8092, useInMemoryDb: true);
         const int iterations = 5;
 
         try
@@ -287,7 +287,7 @@ public class WebSocketServerTests
     public async Task ConnectedClientCount_ShouldReturnCorrectCount()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8093);
+        var server = new WebSocketServer("localhost", 8093, useInMemoryDb: true);
         await server.StartAsync();
 
         try
