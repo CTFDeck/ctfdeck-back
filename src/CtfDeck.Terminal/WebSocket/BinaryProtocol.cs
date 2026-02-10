@@ -214,7 +214,7 @@ public static class BinaryProtocolSerializer
         writer.WriteString(workingDirectory);
         return writer.ToArray();
     }
-    
+
     /// <summary>
     /// Serialize a command kill result
     /// Format: [1B type:5][16B commandId][1B success]
@@ -247,7 +247,7 @@ public static class BinaryProtocolSerializer
         writer.WriteGuid(messageId);
         return writer.ToArray();
     }
-    
+
     public static byte[] SerializePasswordRequest(Guid messageId, string prompt)
     {
         using var writer = new PooledBufferWriter();
@@ -348,87 +348,87 @@ public struct WebSocketResponse
         BinaryProtocolSerializer.SerializeCompleteResponse(MessageId, ExitCode, Output, Error, WorkingDirectory);
 
     public static WebSocketResponse Deserialize(byte[] data)
-{
-    static WebSocketResponse ParseNew(byte[] bytes)
     {
-        using var stream = new MemoryStream(bytes);
-        using var reader = new BinaryReader(stream);
-
-        var messageType = reader.ReadByte();
-        var exitCode = reader.ReadInt32();
-
-        var outputLength = reader.ReadInt32();
-        var outputBytes = reader.ReadBytes(outputLength);
-
-        var errorLength = reader.ReadInt32();
-        var errorBytes = reader.ReadBytes(errorLength);
-
-        var workingDirectoryLength = reader.ReadInt32();
-        var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
-
-        var messageIdBytes = reader.ReadBytes(16);
-        if (messageIdBytes.Length != 16)
-            throw new EndOfStreamException("Invalid GUID length in new format");
-
-        return new WebSocketResponse
+        static WebSocketResponse ParseNew(byte[] bytes)
         {
-            ExitCode = exitCode,
-            OutputLength = outputLength,
-            OutputBytes = outputBytes,
-            ErrorLength = errorLength,
-            ErrorBytes = errorBytes,
-            WorkingDirectoryLength = workingDirectoryLength,
-            WorkingDirectoryBytes = workingDirectoryBytes,
-            MessageId = new Guid(messageIdBytes)
-        };
-    }
+            using var stream = new MemoryStream(bytes);
+            using var reader = new BinaryReader(stream);
 
-    static WebSocketResponse ParseLegacy(byte[] bytes)
-    {
-        using var stream = new MemoryStream(bytes);
-        using var reader = new BinaryReader(stream);
+            var messageType = reader.ReadByte();
+            var exitCode = reader.ReadInt32();
 
-        var exitCode = reader.ReadInt32();
+            var outputLength = reader.ReadInt32();
+            var outputBytes = reader.ReadBytes(outputLength);
 
-        var outputLength = reader.ReadInt32();
-        var outputBytes = reader.ReadBytes(outputLength);
+            var errorLength = reader.ReadInt32();
+            var errorBytes = reader.ReadBytes(errorLength);
 
-        var errorLength = reader.ReadInt32();
-        var errorBytes = reader.ReadBytes(errorLength);
+            var workingDirectoryLength = reader.ReadInt32();
+            var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
 
-        var workingDirectoryLength = reader.ReadInt32();
-        var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
+            var messageIdBytes = reader.ReadBytes(16);
+            if (messageIdBytes.Length != 16)
+                throw new EndOfStreamException("Invalid GUID length in new format");
 
-        var messageIdBytes = reader.ReadBytes(16);
-        if (messageIdBytes.Length != 16)
-            throw new EndOfStreamException("Invalid GUID length in legacy format");
+            return new WebSocketResponse
+            {
+                ExitCode = exitCode,
+                OutputLength = outputLength,
+                OutputBytes = outputBytes,
+                ErrorLength = errorLength,
+                ErrorBytes = errorBytes,
+                WorkingDirectoryLength = workingDirectoryLength,
+                WorkingDirectoryBytes = workingDirectoryBytes,
+                MessageId = new Guid(messageIdBytes)
+            };
+        }
 
-        return new WebSocketResponse
+        static WebSocketResponse ParseLegacy(byte[] bytes)
         {
-            ExitCode = exitCode,
-            OutputLength = outputLength,
-            OutputBytes = outputBytes,
-            ErrorLength = errorLength,
-            ErrorBytes = errorBytes,
-            WorkingDirectoryLength = workingDirectoryLength,
-            WorkingDirectoryBytes = workingDirectoryBytes,
-            MessageId = new Guid(messageIdBytes)
-        };
-    }
+            using var stream = new MemoryStream(bytes);
+            using var reader = new BinaryReader(stream);
 
-    try
-    {
-        var first = data.Length > 0 ? data[0] : (byte)255;
-        if (Enum.IsDefined(typeof(MessageType), (MessageType)first))
-            return ParseNew(data);
+            var exitCode = reader.ReadInt32();
 
-        return ParseLegacy(data);
+            var outputLength = reader.ReadInt32();
+            var outputBytes = reader.ReadBytes(outputLength);
+
+            var errorLength = reader.ReadInt32();
+            var errorBytes = reader.ReadBytes(errorLength);
+
+            var workingDirectoryLength = reader.ReadInt32();
+            var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
+
+            var messageIdBytes = reader.ReadBytes(16);
+            if (messageIdBytes.Length != 16)
+                throw new EndOfStreamException("Invalid GUID length in legacy format");
+
+            return new WebSocketResponse
+            {
+                ExitCode = exitCode,
+                OutputLength = outputLength,
+                OutputBytes = outputBytes,
+                ErrorLength = errorLength,
+                ErrorBytes = errorBytes,
+                WorkingDirectoryLength = workingDirectoryLength,
+                WorkingDirectoryBytes = workingDirectoryBytes,
+                MessageId = new Guid(messageIdBytes)
+            };
+        }
+
+        try
+        {
+            var first = data.Length > 0 ? data[0] : (byte)255;
+            if (Enum.IsDefined(typeof(MessageType), (MessageType)first))
+                return ParseNew(data);
+
+            return ParseLegacy(data);
+        }
+        catch
+        {
+            return ParseLegacy(data);
+        }
     }
-    catch
-    {
-        return ParseLegacy(data);
-    }
-}
 
     public static WebSocketResponse MockResponse(Guid messageId) =>
         FromResult(0, "Mock response from WebSocket server", "", Environment.CurrentDirectory, messageId);
