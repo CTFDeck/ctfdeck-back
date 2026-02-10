@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
-using System.Text;
 using CtfDeck.Terminal.Script;
 using CtfDeck.Terminal.Script.Repositories;
 using CtfDeck.Terminal.Script.Services;
@@ -20,6 +19,7 @@ public class WebSocketServer
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly ConcurrentDictionary<string, WsClient> _connectedClients;
     private readonly ConcurrentDictionary<string, TerminalExecutor> _clientExecutors;
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, TaskCompletionSource<string?>>> _clientSudoWaiters = new();
     private bool _isRunning;
     private Task? _listenerTask;
 
@@ -168,6 +168,7 @@ public class WebSocketServer
                 _clientExecutors.TryAdd(clientId, new TerminalExecutor());
                 _clientActiveCommands.TryAdd(clientId, new ConcurrentDictionary<Guid, CancellationTokenSource>());
                 _clientSendLocks.TryAdd(clientId, new SemaphoreSlim(1, 1));
+                _clientSudoWaiters.TryAdd(clientId, new ConcurrentDictionary<Guid, TaskCompletionSource<string?>>());
                 Console.WriteLine($"Client {clientId} connected from {context.Request.RemoteEndPoint}");
 
                 await HandleClientMessagesAsync(webSocket, clientId);
@@ -184,12 +185,13 @@ public class WebSocketServer
             {
                 foreach (var cts in activeCommands.Values)
                 {
-                    try { cts.Cancel(); cts.Dispose(); } catch { }
+                    try { cts.Cancel(); cts.Dispose(); } catch (Exception ex) { Console.WriteLine(ex.Message); }
                 }
             }
 
             _connectedClients.TryRemove(clientId, out _);
             _activeSessionManager.ClearClient(clientId);
+            _clientSudoWaiters.TryRemove(clientId, out _);
 
             // Dispose the executor to clean up the persistent shell process
             if (_clientExecutors.TryRemove(clientId, out var executor))
@@ -261,6 +263,19 @@ public class WebSocketServer
                             {
                                 var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
                                 await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
+                                break;
+                            }
+
+                        case MessageType.PasswordProvide:
+                            {
+                                var reader = new PasswordProvideReader(buffer.AsSpan(0, result.Count));
+                                var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
+
+                                if (_clientSudoWaiters.TryGetValue(clientId, out var waiters) &&
+                                    waiters.TryRemove(reader.MessageId, out var tcs))
+                                {
+                                    tcs.TrySetResult(pwd);
+                                }
                                 break;
                             }
 
@@ -345,12 +360,30 @@ public class WebSocketServer
 
         try
         {
+            var trimmed = command.Command.TrimStart();
+
+            // ✅ IMPORTANT: actually keep the password and pass it to executor
+            string? sudoPassword = null;
+
+            // Request sudo password if needed
+            if (trimmed.StartsWith("sudo ", StringComparison.Ordinal) || trimmed == "sudo")
+            {
+                sudoPassword = await RequestSudoPasswordAsync(webSocket, clientId, command.MessageId, sendLock, cts.Token);
+                if (string.IsNullOrEmpty(sudoPassword))
+                {
+                    // User cancelled or timeout - treat as cancelled operation
+                    throw new OperationCanceledException("Sudo password not provided");
+                }
+            }
+
             await using var batcher = new OutputBatcher(webSocket, command.MessageId, sendLock);
 
+            // ✅ Pass sudoPassword here (this makes TerminalExecutor inject -S and stdin)
             var streamResult = await executor.ExecuteStreamingAsync(
                 command.Command,
                 (data, isError) => batcher.EnqueueAsync(data, isError).AsTask(),
-                cts.Token);
+                cts.Token,
+                sudoPassword);
 
             var accumulatedOutput = await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
 
@@ -360,7 +393,7 @@ public class WebSocketServer
         }
         catch (OperationCanceledException)
         {
-            // Command was killed — send StreamEnd with exitCode -1
+            // Command was killed or sudo password cancelled — send StreamEnd with exitCode -1
             try
             {
                 var endData = BinaryProtocolSerializer.SerializeStreamEnd(command.MessageId, -1, executor.CurrentDirectory);
@@ -431,6 +464,37 @@ public class WebSocketServer
         {
             sendLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Request sudo password from client and wait for response
+    /// </summary>
+    private async Task<string?> RequestSudoPasswordAsync(
+        WsClient webSocket,
+        string clientId,
+        Guid messageId,
+        SemaphoreSlim sendLock,
+        CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var waiters = _clientSudoWaiters.GetOrAdd(clientId, _ => new ConcurrentDictionary<Guid, TaskCompletionSource<string?>>());
+        waiters[messageId] = tcs;
+
+        var req = BinaryProtocolSerializer.SerializePasswordRequest(messageId, "Sudo password required");
+        await SendBinaryAsync(webSocket, req, sendLock);
+
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+        try
+        {
+            await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, linked.Token));
+        }
+        catch { /* ignored */ }
+
+        waiters.TryRemove(messageId, out _);
+        return tcs.Task.IsCompleted ? tcs.Task.Result : null;
     }
 
     public bool IsRunning => _isRunning;

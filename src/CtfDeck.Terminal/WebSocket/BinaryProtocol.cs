@@ -16,6 +16,8 @@ public enum MessageType : byte
     CommandKill = 4,
     CommandKillResult = 5,
     CommandExecute = 6,
+    PasswordRequest = 7,    // Server -> Client
+    PasswordProvide = 8,    // Client -> Server
 
     // Session requests (client → server)
     SessionCreate = 10,
@@ -212,7 +214,7 @@ public static class BinaryProtocolSerializer
         writer.WriteString(workingDirectory);
         return writer.ToArray();
     }
-
+    
     /// <summary>
     /// Serialize a command kill result
     /// Format: [1B type:5][16B commandId][1B success]
@@ -243,6 +245,15 @@ public static class BinaryProtocolSerializer
         writer.WriteString(error);
         writer.WriteString(workingDirectory);
         writer.WriteGuid(messageId);
+        return writer.ToArray();
+    }
+    
+    public static byte[] SerializePasswordRequest(Guid messageId, string prompt)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.PasswordRequest);
+        writer.WriteGuid(messageId);
+        writer.WriteString(prompt);
         return writer.ToArray();
     }
 }
@@ -280,6 +291,23 @@ public struct WebSocketCommand
         writer.WriteGuid(MessageId);
         return writer.ToArray();
     }
+}
+
+public readonly ref struct PasswordProvideReader
+{
+    public readonly Guid MessageId;
+    public readonly int PasswordLength;
+    public readonly ReadOnlySpan<byte> PasswordBytes;
+
+    public PasswordProvideReader(ReadOnlySpan<byte> data)
+    {
+        // [1B type][16B msgId][4B len][bytes...]
+        MessageId = new Guid(data.Slice(1, 16));
+        PasswordLength = BitConverter.ToInt32(data.Slice(17, 4));
+        PasswordBytes = data.Slice(21, PasswordLength);
+    }
+
+    public string GetPassword() => Encoding.UTF8.GetString(PasswordBytes);
 }
 
 public struct WebSocketResponse
@@ -324,7 +352,6 @@ public struct WebSocketResponse
         using var stream = new MemoryStream(data);
         using var reader = new BinaryReader(stream);
 
-        var messageType = reader.ReadByte();
         var exitCode = reader.ReadInt32();
         var outputLength = reader.ReadInt32();
         var outputBytes = reader.ReadBytes(outputLength);
