@@ -16,6 +16,8 @@ public enum MessageType : byte
     CommandKill = 4,
     CommandKillResult = 5,
     CommandExecute = 6,
+    PasswordRequest = 7,    // Server -> Client
+    PasswordProvide = 8,    // Client -> Server
 
     // Session requests (client → server)
     SessionCreate = 10,
@@ -245,6 +247,15 @@ public static class BinaryProtocolSerializer
         writer.WriteGuid(messageId);
         return writer.ToArray();
     }
+
+    public static byte[] SerializePasswordRequest(Guid messageId, string prompt)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.PasswordRequest);
+        writer.WriteGuid(messageId);
+        writer.WriteString(prompt);
+        return writer.ToArray();
+    }
 }
 
 /// <summary>
@@ -280,6 +291,23 @@ public struct WebSocketCommand
         writer.WriteGuid(MessageId);
         return writer.ToArray();
     }
+}
+
+public readonly ref struct PasswordProvideReader
+{
+    public readonly Guid MessageId;
+    public readonly int PasswordLength;
+    public readonly ReadOnlySpan<byte> PasswordBytes;
+
+    public PasswordProvideReader(ReadOnlySpan<byte> data)
+    {
+        // [1B type][16B msgId][4B len][bytes...]
+        MessageId = new Guid(data.Slice(1, 16));
+        PasswordLength = BitConverter.ToInt32(data.Slice(17, 4));
+        PasswordBytes = data.Slice(21, PasswordLength);
+    }
+
+    public string GetPassword() => Encoding.UTF8.GetString(PasswordBytes);
 }
 
 public struct WebSocketResponse
@@ -321,30 +349,85 @@ public struct WebSocketResponse
 
     public static WebSocketResponse Deserialize(byte[] data)
     {
-        using var stream = new MemoryStream(data);
-        using var reader = new BinaryReader(stream);
-
-        var messageType = reader.ReadByte();
-        var exitCode = reader.ReadInt32();
-        var outputLength = reader.ReadInt32();
-        var outputBytes = reader.ReadBytes(outputLength);
-        var errorLength = reader.ReadInt32();
-        var errorBytes = reader.ReadBytes(errorLength);
-        var workingDirectoryLength = reader.ReadInt32();
-        var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
-        var messageIdBytes = reader.ReadBytes(16);
-
-        return new WebSocketResponse
+        static WebSocketResponse ParseNew(byte[] bytes)
         {
-            ExitCode = exitCode,
-            OutputLength = outputLength,
-            OutputBytes = outputBytes,
-            ErrorLength = errorLength,
-            ErrorBytes = errorBytes,
-            WorkingDirectoryLength = workingDirectoryLength,
-            WorkingDirectoryBytes = workingDirectoryBytes,
-            MessageId = new Guid(messageIdBytes)
-        };
+            using var stream = new MemoryStream(bytes);
+            using var reader = new BinaryReader(stream);
+
+            var messageType = reader.ReadByte();
+            var exitCode = reader.ReadInt32();
+
+            var outputLength = reader.ReadInt32();
+            var outputBytes = reader.ReadBytes(outputLength);
+
+            var errorLength = reader.ReadInt32();
+            var errorBytes = reader.ReadBytes(errorLength);
+
+            var workingDirectoryLength = reader.ReadInt32();
+            var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
+
+            var messageIdBytes = reader.ReadBytes(16);
+            if (messageIdBytes.Length != 16)
+                throw new EndOfStreamException("Invalid GUID length in new format");
+
+            return new WebSocketResponse
+            {
+                ExitCode = exitCode,
+                OutputLength = outputLength,
+                OutputBytes = outputBytes,
+                ErrorLength = errorLength,
+                ErrorBytes = errorBytes,
+                WorkingDirectoryLength = workingDirectoryLength,
+                WorkingDirectoryBytes = workingDirectoryBytes,
+                MessageId = new Guid(messageIdBytes)
+            };
+        }
+
+        static WebSocketResponse ParseLegacy(byte[] bytes)
+        {
+            using var stream = new MemoryStream(bytes);
+            using var reader = new BinaryReader(stream);
+
+            var exitCode = reader.ReadInt32();
+
+            var outputLength = reader.ReadInt32();
+            var outputBytes = reader.ReadBytes(outputLength);
+
+            var errorLength = reader.ReadInt32();
+            var errorBytes = reader.ReadBytes(errorLength);
+
+            var workingDirectoryLength = reader.ReadInt32();
+            var workingDirectoryBytes = reader.ReadBytes(workingDirectoryLength);
+
+            var messageIdBytes = reader.ReadBytes(16);
+            if (messageIdBytes.Length != 16)
+                throw new EndOfStreamException("Invalid GUID length in legacy format");
+
+            return new WebSocketResponse
+            {
+                ExitCode = exitCode,
+                OutputLength = outputLength,
+                OutputBytes = outputBytes,
+                ErrorLength = errorLength,
+                ErrorBytes = errorBytes,
+                WorkingDirectoryLength = workingDirectoryLength,
+                WorkingDirectoryBytes = workingDirectoryBytes,
+                MessageId = new Guid(messageIdBytes)
+            };
+        }
+
+        try
+        {
+            var first = data.Length > 0 ? data[0] : (byte)255;
+            if (Enum.IsDefined(typeof(MessageType), (MessageType)first))
+                return ParseNew(data);
+
+            return ParseLegacy(data);
+        }
+        catch
+        {
+            return ParseLegacy(data);
+        }
     }
 
     public static WebSocketResponse MockResponse(Guid messageId) =>

@@ -1,49 +1,115 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace CtfDeck.Terminal.Terminal;
 
-/// <summary>
-/// Manages process execution with streaming output support
-/// </summary>
 public static class ProcessRunner
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(1);
 
-    /// <summary>
-    /// Runs a command in the specified shell with streaming output
-    /// </summary>
     public static async Task<CommandResult> RunAsync(
         ShellConfig shell,
         string command,
         string workingDirectory,
         Func<string, bool, Task> onOutput,
+        Func<StreamWriter, Task>? writeStdin = null,
         CancellationToken cancellationToken = default)
     {
         using var process = CreateProcess(shell, command, workingDirectory);
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
-        var outputDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var errorDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        SetupOutputHandlers(process, outputBuilder, errorBuilder, outputDone, errorDone, onOutput);
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        var exitCode = await WaitForCompletionAsync(process, outputDone, errorDone, cancellationToken);
-
-        return new CommandResult
+        try
         {
-            Output = outputBuilder.ToString(),
-            Error = exitCode == -1 ? "Command timed out" : errorBuilder.ToString(),
-            ExitCode = exitCode,
-            WorkingDirectory = workingDirectory
-        };
+            process.Start();
+
+            // If sudoPassword was provided, write it ASAP to stdin
+            if (writeStdin != null)
+            {
+                try
+                {
+                    await writeStdin(process.StandardInput);
+                    await process.StandardInput.FlushAsync();
+                    process.StandardInput.Close();
+                }
+                catch { /* ignore */ }
+            }
+
+            using var timeoutCts = new CancellationTokenSource(DefaultTimeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            var stdoutTask = PumpAsync(process.StandardOutput, outputBuilder, onOutput, isError: false, linkedCts.Token);
+            var stderrTask = PumpAsync(process.StandardError, errorBuilder, onOutput, isError: true, linkedCts.Token);
+
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                KillProcess(process);
+                return new CommandResult
+                {
+                    Output = outputBuilder.ToString(),
+                    Error = "Command timed out",
+                    ExitCode = -1,
+                    WorkingDirectory = workingDirectory
+                };
+            }
+
+            await Task.WhenAll(stdoutTask, stderrTask);
+
+            var exitCode = process.ExitCode;
+
+            return new CommandResult
+            {
+                Output = outputBuilder.ToString(),
+                Error = errorBuilder.ToString(),
+                ExitCode = exitCode,
+                WorkingDirectory = workingDirectory
+            };
+        }
+        catch (Exception ex)
+        {
+            KillProcess(process);
+            return CommandResult.Failure(workingDirectory, ex.Message, -1);
+        }
+    }
+
+    private static async Task PumpAsync(
+        StreamReader reader,
+        StringBuilder builder,
+        Func<string, bool, Task> onOutput,
+        bool isError,
+        CancellationToken ct)
+    {
+        var buffer = new char[4096];
+
+        while (!ct.IsCancellationRequested)
+        {
+            int read;
+            try
+            {
+                read = await reader.ReadAsync(buffer, 0, buffer.Length);
+            }
+            catch
+            {
+                break;
+            }
+
+            if (read <= 0) break;
+
+            var chunk = new string(buffer, 0, read);
+            builder.Append(chunk);
+
+            try
+            {
+                await onOutput(chunk, isError);
+            }
+            catch
+            { /* ignore */ }
+        }
     }
 
     private static Process CreateProcess(ShellConfig shell, string command, string workingDirectory)
@@ -69,83 +135,10 @@ public static class ProcessRunner
 
     private static void ConfigureEnvironment(ProcessStartInfo startInfo)
     {
-        startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH");
+        startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "";
         startInfo.Environment["TERM"] = "xterm-256color";
         startInfo.Environment["COLORTERM"] = "truecolor";
         startInfo.Environment["CLICOLOR_FORCE"] = "1";
-    }
-
-    private static void SetupOutputHandlers(
-        Process process,
-        StringBuilder outputBuilder,
-        StringBuilder errorBuilder,
-        TaskCompletionSource<bool> outputDone,
-        TaskCompletionSource<bool> errorDone,
-        Func<string, bool, Task> onOutput)
-    {
-        process.OutputDataReceived += async (_, e) =>
-        {
-            if (e.Data is null)
-            {
-                outputDone.TrySetResult(true);
-                return;
-            }
-
-            outputBuilder.AppendLine(e.Data);
-            await SafeInvokeCallback(onOutput, e.Data + "\n", false);
-        };
-
-        process.ErrorDataReceived += async (_, e) =>
-        {
-            if (e.Data is null)
-            {
-                errorDone.TrySetResult(true);
-                return;
-            }
-
-            errorBuilder.AppendLine(e.Data);
-            await SafeInvokeCallback(onOutput, e.Data + "\n", true);
-        };
-    }
-
-    private static async Task SafeInvokeCallback(Func<string, bool, Task> callback, string data, bool isError)
-    {
-        try
-        {
-            await callback(data, isError);
-        }
-        catch
-        {
-            // Callback errors shouldn't affect process execution
-        }
-    }
-
-    private static async Task<int> WaitForCompletionAsync(
-        Process process,
-        TaskCompletionSource<bool> outputDone,
-        TaskCompletionSource<bool> errorDone,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutCts = new CancellationTokenSource(DefaultTimeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-        try
-        {
-            await process.WaitForExitAsync(linkedCts.Token);
-
-            // Wait for output handlers to drain
-            await Task.WhenAll(
-                Task.WhenAny(outputDone.Task, Task.Delay(OutputDrainTimeout, CancellationToken.None)),
-                Task.WhenAny(errorDone.Task, Task.Delay(OutputDrainTimeout, CancellationToken.None))
-            );
-
-            return process.ExitCode;
-        }
-        catch (OperationCanceledException)
-        {
-            KillProcess(process);
-            return -1;
-        }
     }
 
     private static void KillProcess(Process process)
@@ -153,13 +146,8 @@ public static class ProcessRunner
         try
         {
             if (!process.HasExited)
-            {
                 process.Kill(entireProcessTree: true);
-            }
         }
-        catch
-        {
-            // Process may have already exited
-        }
+        catch { }
     }
 }

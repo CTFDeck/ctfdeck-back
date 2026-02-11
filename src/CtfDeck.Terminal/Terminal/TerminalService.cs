@@ -1,8 +1,7 @@
+using System.Runtime.InteropServices;
+
 namespace CtfDeck.Terminal.Terminal;
 
-/// <summary>
-/// Interactive terminal service for running commands in a REPL loop
-/// </summary>
 public sealed class TerminalService : IDisposable
 {
     private readonly TerminalExecutor _executor;
@@ -24,13 +23,14 @@ public sealed class TerminalService : IDisposable
     {
         _executor = executor ?? new TerminalExecutor();
         _ownsExecutor = executor is null;
+
         _input = input ?? Console.In;
         _output = output ?? Console.Out;
         _error = error ?? Console.Error;
     }
 
     /// <summary>
-    /// Runs the interactive terminal loop
+    /// Interactive REPL loop (what your Xunit tests expect)
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
@@ -38,62 +38,56 @@ public sealed class TerminalService : IDisposable
         {
             await _output.WriteAsync(_executor.GetPrompt());
 
-            var command = await _input.ReadLineAsync(cancellationToken);
+            // If input ends (StringReader empty), ReadLineAsync returns null => terminate
+            var line = await _input.ReadLineAsync(cancellationToken);
+            if (line is null) break;
 
-            if (ShouldExit(command))
-            {
+            var command = line.Trim();
+
+            if (ExitCommands.Contains(command))
                 break;
-            }
 
             if (string.IsNullOrWhiteSpace(command))
-            {
                 continue;
-            }
 
-            await ExecuteAndDisplayAsync(command, cancellationToken);
+            // Stream to output/error so tests can assert on writers
+            var result = await _executor.ExecuteStreamingAsync(
+                line, // keep original spacing (cd path etc.)
+                async (data, isError) =>
+                {
+                    if (isError) await _error.WriteAsync(data);
+                    else await _output.WriteAsync(data);
+                },
+                cancellationToken
+            );
+
+            // In case some implementations return aggregated strings too
+            if (!string.IsNullOrEmpty(result.Output))
+                await _output.WriteAsync(result.Output);
+
+            if (!string.IsNullOrEmpty(result.Error))
+                await _error.WriteAsync(result.Error);
         }
     }
 
-    private static bool ShouldExit(string? command)
+    /// <summary>
+    /// Programmatic API (WebSocket) - keeps sudo support
+    /// </summary>
+    public Task<CommandResult> ExecuteStreamingAsync(
+        string command,
+        OutputReceivedHandler onOutput,
+        CancellationToken ct,
+        string? sudoPassword = null)
     {
-        if (command is null)
-        {
-            return true;
-        }
-
-        var trimmed = command.Trim();
-        return ExitCommands.Contains(trimmed);
+        return _executor.ExecuteStreamingAsync(command, onOutput, ct, sudoPassword);
     }
 
-    private async Task ExecuteAndDisplayAsync(string command, CancellationToken cancellationToken)
-    {
-        var result = await _executor.ExecuteStreamingAsync(
-            command,
-            async (data, isError) =>
-            {
-                var writer = isError ? _error : _output;
-                await writer.WriteAsync(data);
-            },
-            cancellationToken
-        );
-
-        // For non-streaming output that wasn't displayed
-        if (!string.IsNullOrEmpty(result.Output))
-        {
-            await _output.WriteAsync(result.Output);
-        }
-
-        if (!string.IsNullOrEmpty(result.Error))
-        {
-            await _error.WriteAsync(result.Error);
-        }
-    }
+    public Task<CommandResult> ExecuteAsync(string command, CancellationToken ct = default)
+        => _executor.ExecuteAsync(command, ct);
 
     public void Dispose()
     {
         if (_ownsExecutor)
-        {
             _executor.Dispose();
-        }
     }
 }
