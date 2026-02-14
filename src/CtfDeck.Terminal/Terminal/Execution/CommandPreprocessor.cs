@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace CtfDeck.Terminal.Terminal;
 
 /// <summary>
@@ -125,7 +127,10 @@ public static class CommandPreprocessor
         return baseCommand.ToLowerInvariant() switch
         {
             // GNU ls uses --color; macOS/BSD ls uses -G (we fallback cleanly)
-            "ls" => ReplaceFirst(command, "ls", "ls --color=always 2>/dev/null || ls -G"),
+            "ls" => ReplaceFirst(command, "ls",
+                RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    ? "ls -G"
+                    : "ls --color=always"),
             "grep" => ReplaceFirst(command, "grep", "grep --color=always"),
             "diff" => ReplaceFirst(command, "diff", "diff --color=always"),
             "tree" => ReplaceFirst(command, "tree", "tree -C"),
