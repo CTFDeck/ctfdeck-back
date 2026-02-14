@@ -21,6 +21,12 @@ public static class CommandPreprocessor
     };
 
     /// <summary>
+    /// Separators we support for "chained" commands.
+    /// We keep them in the output and recolorize each command segment.
+    /// </summary>
+    private static readonly string[] ChainSeparators = { "&&", "||", ";", "|" };
+
+    /// <summary>
     /// Prepares a command for execution with the specified shell
     /// </summary>
     public static string Prepare(string command, ShellType shellType)
@@ -30,12 +36,79 @@ public static class CommandPreprocessor
             return command;
         }
 
-        var colorizedCommand = InjectColorFlags(command);
+        var colorizedCommand = InjectColorFlagsChained(command);
         return $"{BashColorEnv} {colorizedCommand}";
     }
 
     /// <summary>
-    /// Injects color flags into supported commands
+    /// Injects color flags into supported commands, even when commands are chained
+    /// (e.g. "cat a && ls -la; grep foo file | less").
+    ///
+    /// Notes:
+    /// - This is a pragmatic splitter (not a full bash parser).
+    /// - It does NOT understand quotes/subshells like: echo "a && b" or $(...)
+    /// </summary>
+    private static string InjectColorFlagsChained(string command)
+    {
+        var parts = SplitKeepSeparators(command, ChainSeparators);
+
+        for (var i = 0; i < parts.Count; i++)
+        {
+            if (IsSeparator(parts[i])) continue;
+
+            parts[i] = InjectColorFlags(parts[i]);
+        }
+
+        return string.Concat(parts);
+    }
+
+    private static bool IsSeparator(string s)
+    {
+        var t = s.Trim();
+        return t is "&&" or "||" or ";" or "|";
+    }
+
+    private static List<string> SplitKeepSeparators(string input, string[] seps)
+    {
+        var result = new List<string>();
+        var i = 0;
+
+        while (i < input.Length)
+        {
+            var nextIndex = -1;
+            var nextSep = "";
+
+            foreach (var sep in seps)
+            {
+                var idx = input.IndexOf(sep, i, StringComparison.Ordinal);
+                if (idx >= 0 && (nextIndex == -1 || idx < nextIndex))
+                {
+                    nextIndex = idx;
+                    nextSep = sep;
+                }
+            }
+
+            if (nextIndex == -1)
+            {
+                result.Add(input[i..]);
+                break;
+            }
+
+            // chunk before separator
+            if (nextIndex > i)
+                result.Add(input[i..nextIndex]);
+
+            // separator itself
+            result.Add(nextSep);
+
+            i = nextIndex + nextSep.Length;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Injects color flags into supported commands (single segment)
     /// </summary>
     private static string InjectColorFlags(string command)
     {
@@ -51,7 +124,8 @@ public static class CommandPreprocessor
         // Replace first occurrence of the command with colored version
         return baseCommand.ToLowerInvariant() switch
         {
-            "ls" => ReplaceFirst(command, "ls", "ls --color=always"),
+            // GNU ls uses --color; macOS/BSD ls uses -G (we fallback cleanly)
+            "ls" => ReplaceFirst(command, "ls", "ls --color=always 2>/dev/null || ls -G"),
             "grep" => ReplaceFirst(command, "grep", "grep --color=always"),
             "diff" => ReplaceFirst(command, "diff", "diff --color=always"),
             "tree" => ReplaceFirst(command, "tree", "tree -C"),
