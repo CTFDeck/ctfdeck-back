@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
+using CtfDeck.Abstractions.Ports.Scripts;
+using CtfDeck.Abstractions.Ports.Sessions;
 using WsClient = System.Net.WebSockets.WebSocket;
 
 using CtfDeck.Contracts.Transport;
@@ -12,8 +14,6 @@ using CtfDeck.Data.Repositories.Scripts;
 using CtfDeck.Terminal.Features.Sessions;
 using CtfDeck.Terminal.Features.Scripts;
 using CtfDeck.Terminal.Handlers;
-using CtfDeck.Terminal.Ports.Sessions;
-using CtfDeck.Terminal.Ports.Scripts;
 using CtfDeck.Terminal.Terminal;
 
 namespace CtfDeck.ServerWs.WebSocket;
@@ -59,8 +59,8 @@ public class WebSocketServer
         _dbContext = new CtfDeckDbContext(dbPath);
 
         // Repositories (as ports)
-        CtfDeck.Terminal.Ports.Sessions.ISessionRepository sessionRepository = new SessionRepository(_dbContext);
-        CtfDeck.Terminal.Ports.Scripts.ICustomScriptRepository customScriptRepository = new CustomScriptRepository(_dbContext);
+        ISessionRepository sessionRepository = new SessionRepository(_dbContext);
+        ICustomScriptRepository customScriptRepository = new CustomScriptRepository(_dbContext);
 
         // Services / handlers
         _sessionService = new SessionService(sessionRepository);
@@ -251,59 +251,59 @@ public class WebSocketServer
                     switch (messageType)
                     {
                         case MessageType.CommandExecute:
-                        {
-                            // Copy buffer before dispatching (buffer is reused by receive loop)
-                            var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
-                            var command = WebSocketCommand.Deserialize(messageDataCopy);
-                            var trimmedCommand = command.Command.Trim();
+                            {
+                                // Copy buffer before dispatching (buffer is reused by receive loop)
+                                var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
+                                var command = WebSocketCommand.Deserialize(messageDataCopy);
+                                var trimmedCommand = command.Command.Trim();
 
-                            if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
-                            {
-                                // cd commands must be sequential — they modify shared cwd state
-                                await ProcessCdCommand(webSocket, command, clientId, sendLock);
+                                if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
+                                {
+                                    // cd commands must be sequential — they modify shared cwd state
+                                    await ProcessCdCommand(webSocket, command, clientId, sendLock);
+                                }
+                                else
+                                {
+                                    // Fire-and-forget for streaming commands — enables parallel execution
+                                    _ = Task.Run(() => ProcessStreamingCommandAsync(webSocket, command, clientId, sendLock));
+                                }
+                                break;
                             }
-                            else
-                            {
-                                // Fire-and-forget for streaming commands — enables parallel execution
-                                _ = Task.Run(() => ProcessStreamingCommandAsync(webSocket, command, clientId, sendLock));
-                            }
-                            break;
-                        }
 
                         case MessageType.CommandKill:
-                        {
-                            var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
-                            await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
-                            break;
-                        }
+                            {
+                                var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
+                                await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
+                                break;
+                            }
 
                         case MessageType.PasswordProvide:
-                        {
-                            var reader = new PasswordProvideReader(buffer.AsSpan(0, result.Count));
-                            var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
-
-                            if (_clientSudoWaiters.TryGetValue(clientId, out var waiters) &&
-                                waiters.TryRemove(reader.MessageId, out var tcs))
                             {
-                                tcs.TrySetResult(pwd);
+                                var reader = new PasswordProvideReader(buffer.AsSpan(0, result.Count));
+                                var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
+
+                                if (_clientSudoWaiters.TryGetValue(clientId, out var waiters) &&
+                                    waiters.TryRemove(reader.MessageId, out var tcs))
+                                {
+                                    tcs.TrySetResult(pwd);
+                                }
+                                break;
                             }
-                            break;
-                        }
 
                         default:
-                        {
-                            // Session, custom script, and other typed messages
-                            var messageData = buffer.AsMemory(0, result.Count);
+                            {
+                                // Session, custom script, and other typed messages
+                                var messageData = buffer.AsMemory(0, result.Count);
 
-                            if (await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                if (await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                    break;
+
+                                if (await _customScriptMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                    break;
+
+                                Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
                                 break;
-
-                            if (await _customScriptMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
-                                break;
-
-                            Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
-                            break;
-                        }
+                            }
                     }
                 }
             }
