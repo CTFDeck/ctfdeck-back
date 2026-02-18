@@ -1,4 +1,4 @@
-using CtfDeck.Terminal.WebSocket;
+using CtfDeck.Contracts.Transport;
 using FluentAssertions;
 using System.Text;
 

@@ -1,6 +1,5 @@
-using SessionModel = CtfDeck.Terminal.Session.Models.Session;
-using CtfDeck.Terminal.Session.Models;
-using CtfDeck.Terminal.WebSocket;
+using CtfDeck.Contracts.Models.Sessions;
+using CtfDeck.Contracts.Transport;
 
 namespace CtfDeck.Contracts.Protocols.Session;
 
@@ -25,7 +24,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeLoadResult(Guid messageId, bool success, SessionModel? session)
+    public static byte[] SerializeLoadResult(Guid messageId, bool success, SessionDto? session)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionLoadResult);
@@ -40,7 +39,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeListResult(Guid messageId, IEnumerable<SessionMetadata> sessions)
+    public static byte[] SerializeListResult(Guid messageId, IEnumerable<SessionMetadataDto> sessions)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionListResult);
@@ -84,7 +83,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    private static void WriteSession(PooledBufferWriter writer, SessionModel session)
+    private static void WriteSession(PooledBufferWriter writer, SessionDto session)
     {
         writer.WriteGuid(session.Id);
         writer.WriteString(session.Name);
@@ -105,7 +104,7 @@ public static class SessionProtocolSerializer
         }
     }
 
-    private static void WriteHistoryEntry(PooledBufferWriter writer, HistoryEntry entry)
+    private static void WriteHistoryEntry(PooledBufferWriter writer, HistoryEntryDto entry)
     {
         writer.WriteGuid(entry.Id);
         writer.WriteInt64(entry.Timestamp.Ticks);
@@ -143,7 +142,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    private static void WriteSessionTarget(PooledBufferWriter writer, SessionTarget target)
+    private static void WriteSessionTarget(PooledBufferWriter writer, SessionTargetDto target)
     {
         writer.WriteGuid(target.Id);
         writer.WriteString(target.Address);
@@ -153,7 +152,7 @@ public static class SessionProtocolSerializer
         writer.WriteInt32((int)target.Type);
     }
 
-    private static void WriteSessionMetadata(PooledBufferWriter writer, SessionMetadata meta)
+    private static void WriteSessionMetadata(PooledBufferWriter writer, SessionMetadataDto meta)
     {
         writer.WriteGuid(meta.Id);
         writer.WriteString(meta.Name);

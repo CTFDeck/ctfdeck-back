@@ -1,55 +1,60 @@
-using CtfDeck.Terminal.Script.Models;
-using CtfDeck.Terminal.Session.Data;
+using ContractCategory = CtfDeck.Contracts.Models.Scripts.ScriptCategory;
+using CtfDeck.Abstractions.Ports.Scripts;
+using CtfDeck.Contracts.Models.Scripts;
+using CtfDeck.Data.Db;
+using CtfDeck.Data.PersistenceModels.Scripts;
+
 
 namespace CtfDeck.Data.Repositories.Scripts;
 
-public class CustomScriptRepository : ICustomScriptRepository
+public sealed class CustomScriptRepository : ICustomScriptRepository
 {
-    private readonly SessionDbContext _context;
+    private readonly CtfDeckDbContext _context;
     private readonly object _lock = new();
 
-    public CustomScriptRepository(SessionDbContext context)
+    public CustomScriptRepository(CtfDeckDbContext context)
     {
         _context = context;
     }
 
-    public CustomScript Create(string name, ScriptCategory category, string template)
+    public CustomScriptDto Create(string name, ContractCategory category, string template)
     {
-        var script = new CustomScript
+        var model = new CustomScript
         {
             Id = Guid.NewGuid(),
             Name = name,
-            Category = category,
+            Category = (CtfDeck.Data.PersistenceModels.Scripts.ScriptCategory)category,
             Template = template
         };
 
         lock (_lock)
         {
-            _context.CustomScripts.Insert(script);
+            _context.CustomScripts.Insert(model);
         }
 
-        return script;
+        return ToDto(model);
     }
 
-    public List<CustomScript> GetAll()
+    public List<CustomScriptDto> GetAll()
     {
         lock (_lock)
         {
-            return _context.CustomScripts.FindAll().ToList();
+            return _context.CustomScripts.FindAll().Select(ToDto).ToList();
         }
     }
 
-    public bool Update(Guid id, string name, ScriptCategory category, string template)
+    public bool Update(Guid id, string name, ContractCategory category, string template)
     {
         lock (_lock)
         {
-            var script = _context.CustomScripts.FindById(id);
-            if (script == null) return false;
+            var model = _context.CustomScripts.FindById(id);
+            if (model == null) return false;
 
-            script.Name = name;
-            script.Category = category;
-            script.Template = template;
-            return _context.CustomScripts.Update(script);
+            model.Name = name;
+            model.Category = (CtfDeck.Data.PersistenceModels.Scripts.ScriptCategory)category;
+            model.Template = template;
+
+            return _context.CustomScripts.Update(model);
         }
     }
 
@@ -60,4 +65,12 @@ public class CustomScriptRepository : ICustomScriptRepository
             return _context.CustomScripts.Delete(id);
         }
     }
+
+    private static CustomScriptDto ToDto(CustomScript m) => new()
+    {
+        Id = m.Id,
+        Name = m.Name,
+        Category = (ContractCategory)m.Category,
+        Template = m.Template
+    };
 }

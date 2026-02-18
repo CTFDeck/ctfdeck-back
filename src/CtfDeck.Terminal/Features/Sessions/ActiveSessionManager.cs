@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using CtfDeck.Terminal.Session.Services;
 
 namespace CtfDeck.Terminal.Features.Sessions;
 

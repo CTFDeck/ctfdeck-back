@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using System.Net.WebSockets;
 using System.Text;
+using CtfDeck.Contracts.Transport;
 
 namespace CtfDeck.ServerWs.WebSocket;
 

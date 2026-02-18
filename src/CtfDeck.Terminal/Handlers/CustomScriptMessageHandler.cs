@@ -1,7 +1,7 @@
 using System.Net.WebSockets;
-using CtfDeck.Terminal.Script.Protocol;
-using CtfDeck.Terminal.Script.Services;
-using CtfDeck.Terminal.WebSocket;
+using CtfDeck.Terminal.Features.Scripts;
+using CtfDeck.Contracts.Transport;
+using CtfDeck.Contracts.Protocols.CustomScript;
 
 namespace CtfDeck.Terminal.Handlers;
 

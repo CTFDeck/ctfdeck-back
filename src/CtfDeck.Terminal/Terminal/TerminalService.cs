@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using CtfDeck.Terminal.Terminal.Core;
 
 namespace CtfDeck.Terminal.Terminal;
 

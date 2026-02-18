@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\CtfDeck.Contracts\CtfDeck.Contracts.csproj" />
+        <ProjectReference Include="..\CtfDeck.Abstractions\CtfDeck.Abstractions.csproj" />
     </ItemGroup>
 
 </Project>

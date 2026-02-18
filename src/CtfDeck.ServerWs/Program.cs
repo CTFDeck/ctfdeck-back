@@ -1,4 +1,4 @@
-﻿using CtfDeck.Terminal.WebSocket;
+﻿using CtfDeck.ServerWs.WebSocket;
 
 var server = new WebSocketServer("localhost", 42712);
 

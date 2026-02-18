@@ -1,15 +1,20 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
-using CtfDeck.Terminal.Script;
-using CtfDeck.Terminal.Script.Repositories;
-using CtfDeck.Terminal.Script.Services;
-using CtfDeck.Terminal.Session;
-using CtfDeck.Terminal.Session.Data;
-using CtfDeck.Terminal.Session.Repositories;
-using CtfDeck.Terminal.Session.Services;
-using CtfDeck.Terminal.Terminal;
 using WsClient = System.Net.WebSockets.WebSocket;
+
+using CtfDeck.Contracts.Transport;
+
+using CtfDeck.Data.Db;
+using CtfDeck.Data.Repositories.Sessions;
+using CtfDeck.Data.Repositories.Scripts;
+
+using CtfDeck.Terminal.Features.Sessions;
+using CtfDeck.Terminal.Features.Scripts;
+using CtfDeck.Terminal.Handlers;
+using CtfDeck.Terminal.Ports.Sessions;
+using CtfDeck.Terminal.Ports.Scripts;
+using CtfDeck.Terminal.Terminal;
 
 namespace CtfDeck.ServerWs.WebSocket;
 
@@ -25,18 +30,19 @@ public class WebSocketServer
 
     // Parallel execution: track active commands per client for cancellation
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, CancellationTokenSource>> _clientActiveCommands = new();
+
     // Send locks per client: WebSocket.SendAsync is NOT thread-safe for concurrent calls
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _clientSendLocks = new();
 
+    // Data
+    private readonly CtfDeckDbContext _dbContext;
+
     // Session management
-    private readonly SessionDbContext _sessionDbContext;
-    private readonly SessionRepository _sessionRepository;
     private readonly SessionService _sessionService;
     private readonly ActiveSessionManager _activeSessionManager;
     private readonly SessionMessageHandler _sessionMessageHandler;
 
     // Custom script management
-    private readonly CustomScriptRepository _customScriptRepository;
     private readonly CustomScriptService _customScriptService;
     private readonly CustomScriptMessageHandler _customScriptMessageHandler;
 
@@ -48,17 +54,20 @@ public class WebSocketServer
         _connectedClients = new ConcurrentDictionary<string, WsClient>();
         _clientExecutors = new ConcurrentDictionary<string, TerminalExecutor>();
 
-        // Initialize session management (use in-memory for tests)
+        // Initialize DB (use in-memory for tests)
         var dbPath = useInMemoryDb ? ":memory:" : null;
-        _sessionDbContext = new SessionDbContext(dbPath);
-        _sessionRepository = new SessionRepository(_sessionDbContext);
-        _sessionService = new SessionService(_sessionRepository);
+        _dbContext = new CtfDeckDbContext(dbPath);
+
+        // Repositories (as ports)
+        CtfDeck.Terminal.Ports.Sessions.ISessionRepository sessionRepository = new SessionRepository(_dbContext);
+        CtfDeck.Terminal.Ports.Scripts.ICustomScriptRepository customScriptRepository = new CustomScriptRepository(_dbContext);
+
+        // Services / handlers
+        _sessionService = new SessionService(sessionRepository);
         _activeSessionManager = new ActiveSessionManager(_sessionService);
         _sessionMessageHandler = new SessionMessageHandler(_sessionService, _activeSessionManager);
 
-        // Initialize custom script management
-        _customScriptRepository = new CustomScriptRepository(_sessionDbContext);
-        _customScriptService = new CustomScriptService(_customScriptRepository);
+        _customScriptService = new CustomScriptService(customScriptRepository);
         _customScriptMessageHandler = new CustomScriptMessageHandler(_customScriptService);
     }
 
@@ -114,7 +123,7 @@ public class WebSocketServer
         }
 
         _connectedClients.Clear();
-        _sessionDbContext.Dispose();
+        _dbContext.Dispose();
         Console.WriteLine("WebSocket server stopped successfully.");
     }
 
@@ -155,7 +164,7 @@ public class WebSocketServer
     private async Task HandleWebSocketConnectionAsync(HttpListenerContext context)
     {
         WebSocketContext? webSocketContext = null;
-        string clientId = Guid.NewGuid().ToString();
+        var clientId = Guid.NewGuid().ToString();
 
         try
         {
@@ -169,6 +178,7 @@ public class WebSocketServer
                 _clientActiveCommands.TryAdd(clientId, new ConcurrentDictionary<Guid, CancellationTokenSource>());
                 _clientSendLocks.TryAdd(clientId, new SemaphoreSlim(1, 1));
                 _clientSudoWaiters.TryAdd(clientId, new ConcurrentDictionary<Guid, TaskCompletionSource<string?>>());
+
                 Console.WriteLine($"Client {clientId} connected from {context.Request.RemoteEndPoint}");
 
                 await HandleClientMessagesAsync(webSocket, clientId);
@@ -185,7 +195,8 @@ public class WebSocketServer
             {
                 foreach (var cts in activeCommands.Values)
                 {
-                    try { cts.Cancel(); cts.Dispose(); } catch (Exception ex) { Console.WriteLine(ex.Message); }
+                    try { cts.Cancel(); cts.Dispose(); }
+                    catch (Exception ex) { Console.WriteLine(ex.Message); }
                 }
             }
 
@@ -240,56 +251,59 @@ public class WebSocketServer
                     switch (messageType)
                     {
                         case MessageType.CommandExecute:
-                            {
-                                // Copy buffer before dispatching (buffer is reused by receive loop)
-                                var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
-                                var command = WebSocketCommand.Deserialize(messageDataCopy);
-                                var trimmedCommand = command.Command.Trim();
+                        {
+                            // Copy buffer before dispatching (buffer is reused by receive loop)
+                            var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
+                            var command = WebSocketCommand.Deserialize(messageDataCopy);
+                            var trimmedCommand = command.Command.Trim();
 
-                                if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
-                                {
-                                    // cd commands must be sequential — they modify shared cwd state
-                                    await ProcessCdCommand(webSocket, command, clientId, sendLock);
-                                }
-                                else
-                                {
-                                    // Fire-and-forget for streaming commands — enables parallel execution
-                                    _ = Task.Run(() => ProcessStreamingCommandAsync(webSocket, command, clientId, sendLock));
-                                }
-                                break;
+                            if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
+                            {
+                                // cd commands must be sequential — they modify shared cwd state
+                                await ProcessCdCommand(webSocket, command, clientId, sendLock);
                             }
+                            else
+                            {
+                                // Fire-and-forget for streaming commands — enables parallel execution
+                                _ = Task.Run(() => ProcessStreamingCommandAsync(webSocket, command, clientId, sendLock));
+                            }
+                            break;
+                        }
 
                         case MessageType.CommandKill:
-                            {
-                                var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
-                                await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
-                                break;
-                            }
+                        {
+                            var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
+                            await HandleCommandKill(webSocket, killCommandId, clientId, sendLock);
+                            break;
+                        }
 
                         case MessageType.PasswordProvide:
-                            {
-                                var reader = new PasswordProvideReader(buffer.AsSpan(0, result.Count));
-                                var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
+                        {
+                            var reader = new PasswordProvideReader(buffer.AsSpan(0, result.Count));
+                            var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
 
-                                if (_clientSudoWaiters.TryGetValue(clientId, out var waiters) &&
-                                    waiters.TryRemove(reader.MessageId, out var tcs))
-                                {
-                                    tcs.TrySetResult(pwd);
-                                }
-                                break;
+                            if (_clientSudoWaiters.TryGetValue(clientId, out var waiters) &&
+                                waiters.TryRemove(reader.MessageId, out var tcs))
+                            {
+                                tcs.TrySetResult(pwd);
                             }
+                            break;
+                        }
 
                         default:
-                            {
-                                // Session, custom script, and other typed messages
-                                var messageData = buffer.AsMemory(0, result.Count);
-                                if (await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
-                                    break;
-                                if (await _customScriptMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
-                                    break;
-                                Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
+                        {
+                            // Session, custom script, and other typed messages
+                            var messageData = buffer.AsMemory(0, result.Count);
+
+                            if (await _sessionMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
                                 break;
-                            }
+
+                            if (await _customScriptMessageHandler.TryHandleAsync(clientId, messageData, webSocket, _cancellationTokenSource.Token, sendLock))
+                                break;
+
+                            Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
+                            break;
+                        }
                     }
                 }
             }
@@ -320,14 +334,17 @@ public class WebSocketServer
             var errorResponse = WebSocketResponse.FromResult(
                 -1, "", "No terminal executor found for this client",
                 Environment.CurrentDirectory, command.MessageId);
+
             await SendBinaryAsync(webSocket, errorResponse.Serialize(), sendLock);
             return;
         }
 
         var result = await executor.ExecuteAsync(command.Command);
+
         var response = WebSocketResponse.FromResult(
             result.ExitCode, result.Output, result.Error,
             result.WorkingDirectory, command.MessageId);
+
         await SendBinaryAsync(webSocket, response.Serialize(), sendLock);
 
         _activeSessionManager.RecordCommand(
@@ -347,6 +364,7 @@ public class WebSocketServer
             var errorResponse = WebSocketResponse.FromResult(
                 -1, "", "No terminal executor found for this client",
                 Environment.CurrentDirectory, command.MessageId);
+
             await SendBinaryAsync(webSocket, errorResponse.Serialize(), sendLock);
             return;
         }
@@ -362,7 +380,7 @@ public class WebSocketServer
         {
             var trimmed = command.Command.TrimStart();
 
-            // ✅ IMPORTANT: actually keep the password and pass it to executor
+            // actually keep the password and pass it to executor
             string? sudoPassword = null;
 
             // Request sudo password if needed
@@ -378,7 +396,7 @@ public class WebSocketServer
 
             await using var batcher = new OutputBatcher(webSocket, command.MessageId, sendLock);
 
-            // ✅ Pass sudoPassword here (this makes TerminalExecutor inject -S and stdin)
+            // Pass sudoPassword here (TerminalExecutor injects -S and stdin)
             var streamResult = await executor.ExecuteStreamingAsync(
                 command.Command,
                 (data, isError) => batcher.EnqueueAsync(data, isError).AsTask(),
@@ -491,7 +509,10 @@ public class WebSocketServer
         {
             await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, linked.Token));
         }
-        catch { /* ignored */ }
+        catch
+        {
+            // ignored
+        }
 
         waiters.TryRemove(messageId, out _);
         return tcs.Task.IsCompleted ? tcs.Task.Result : null;

@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
-using CtfDeck.Terminal.WebSocket;
+using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.Contracts.Transport;
 using FluentAssertions;
 
 namespace CtfDeck.Tests.WebSocket;

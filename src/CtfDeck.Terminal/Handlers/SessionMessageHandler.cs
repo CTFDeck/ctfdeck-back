@@ -1,7 +1,7 @@
 using System.Net.WebSockets;
-using CtfDeck.Terminal.Session.Protocol;
-using CtfDeck.Terminal.Session.Services;
-using CtfDeck.Terminal.WebSocket;
+using CtfDeck.Terminal.Features.Sessions;
+using CtfDeck.Contracts.Transport;
+using CtfDeck.Contracts.Protocols.Session;
 
 namespace CtfDeck.Terminal.Handlers;
 

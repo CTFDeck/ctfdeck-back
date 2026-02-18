@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Text;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.Contracts.Transport;
 
 /// <summary>
 /// High-performance binary protocol using ArrayPool to minimize allocations

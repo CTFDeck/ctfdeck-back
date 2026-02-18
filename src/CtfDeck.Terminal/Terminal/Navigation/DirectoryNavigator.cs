@@ -1,4 +1,5 @@
-using System.Runtime.InteropServices;
+using CtfDeck.Terminal.Terminal.Core;
+using CtfDeck.Terminal.Terminal.Shell;
 
 namespace CtfDeck.Terminal.Terminal.Navigation;
 
@@ -78,7 +79,7 @@ public sealed class DirectoryNavigator
         {
             await onOutput(error + "\n", true);
         }
-        catch { }
+        catch { /* Ignore */ }
 
         return CommandResult.Failure(_currentDirectory, error);
     }

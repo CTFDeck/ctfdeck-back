@@ -1,30 +1,31 @@
 using LiteDB;
-using SessionModel = CtfDeck.Terminal.Session.Models.Session;
-using CtfDeck.Terminal.Session.Models;
-using CtfDeck.Terminal.Script.Models;
+using CtfDeck.Data.PersistenceModels.Sessions;
+using CtfDeck.Data.PersistenceModels.Scripts;
 
 namespace CtfDeck.Data.Db;
 
-public class SessionDbContext : IDisposable
+public sealed class CtfDeckDbContext : IDisposable
 {
     private static bool _mapperConfigured;
     private static readonly object _mapperLock = new();
 
     private readonly LiteDatabase _database;
-    private readonly ILiteCollection<SessionModel> _sessions;
+    private readonly ILiteCollection<Session> _sessions;
     private readonly ILiteCollection<CustomScript> _customScripts;
     private bool _disposed;
 
-    public SessionDbContext(string? databasePath = null)
+    public CtfDeckDbContext(string? databasePath = null)
     {
         // Use in-memory database if path is ":memory:" or null for tests
         var connectionString = databasePath == ":memory:"
             ? "Filename=:memory:;Mode=Memory;Cache=Shared"
-            : $"Filename={databasePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ctfdeck_sessions.db")}";
+            : $"Filename={databasePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ctfdeck.db")}";
 
         ConfigureBsonMapper();
+
         _database = new LiteDatabase(connectionString);
-        _sessions = _database.GetCollection<SessionModel>("sessions");
+
+        _sessions = _database.GetCollection<Session>("sessions");
         _sessions.EnsureIndex(x => x.Id, unique: true);
         _sessions.EnsureIndex(x => x.Name);
 
@@ -32,7 +33,7 @@ public class SessionDbContext : IDisposable
         _customScripts.EnsureIndex(x => x.Id, unique: true);
     }
 
-    public ILiteCollection<SessionModel> Sessions => _sessions;
+    public ILiteCollection<Session> Sessions => _sessions;
     public ILiteCollection<CustomScript> CustomScripts => _customScripts;
 
     private static void ConfigureBsonMapper()
@@ -45,17 +46,10 @@ public class SessionDbContext : IDisposable
 
             BsonMapper.Global.EnumAsInteger = true;
 
-            BsonMapper.Global.Entity<SessionModel>()
-                .Id(x => x.Id);
-
-            BsonMapper.Global.Entity<HistoryEntry>()
-                .Id(x => x.Id);
-
-            BsonMapper.Global.Entity<SessionTarget>()
-                .Id(x => x.Id);
-
-            BsonMapper.Global.Entity<CustomScript>()
-                .Id(x => x.Id);
+            BsonMapper.Global.Entity<Session>().Id(x => x.Id);
+            BsonMapper.Global.Entity<HistoryEntry>().Id(x => x.Id);
+            BsonMapper.Global.Entity<SessionTarget>().Id(x => x.Id);
+            BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
 
             _mapperConfigured = true;
         }

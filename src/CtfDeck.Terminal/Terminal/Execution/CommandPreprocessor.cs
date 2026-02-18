@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using CtfDeck.Terminal.Terminal.Shell;
 
 namespace CtfDeck.Terminal.Terminal.Execution;
 

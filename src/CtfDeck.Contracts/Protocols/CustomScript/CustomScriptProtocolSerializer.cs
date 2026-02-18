@@ -1,6 +1,5 @@
-using CtfDeck.Data.PersistenceModels.Scripts;
-using CtfDeck.ServerWs.WebSocket;
-
+using CtfDeck.Contracts.Models.Scripts;
+using CtfDeck.Contracts.Transport;
 namespace CtfDeck.Contracts.Protocols.CustomScript;
 
 public static class CustomScriptProtocolSerializer
@@ -33,7 +32,7 @@ public static class CustomScriptProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeListResult(Guid messageId, List<CustomScript> scripts)
+    public static byte[] SerializeListResult(Guid messageId, List<CustomScriptDto> scripts)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.CustomScriptListResult);
@@ -57,7 +56,7 @@ public static class CustomScriptProtocolSerializer
         return writer.ToArray();
     }
 
-    private static void WriteCustomScript(PooledBufferWriter writer, CustomScript script)
+    private static void WriteCustomScript(PooledBufferWriter writer, CustomScriptDto script)
     {
         writer.WriteGuid(script.Id);
         writer.WriteString(script.Name);

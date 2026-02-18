@@ -26,6 +26,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CtfDeck.Terminal\CtfDeck.Terminal.csproj" />
+    <ProjectReference Include="..\..\src\CtfDeck.ServerWs\CtfDeck.ServerWs.csproj" />
+    <ProjectReference Include="..\..\src\CtfDeck.Contracts\CtfDeck.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

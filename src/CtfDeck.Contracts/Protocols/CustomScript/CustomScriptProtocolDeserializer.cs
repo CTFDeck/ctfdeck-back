@@ -1,6 +1,6 @@
 using System.Text;
-using CtfDeck.Data.PersistenceModels.Scripts;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.Contracts.Models.Scripts;
+using CtfDeck.Contracts.Transport;
 
 namespace CtfDeck.Contracts.Protocols.CustomScript;
 

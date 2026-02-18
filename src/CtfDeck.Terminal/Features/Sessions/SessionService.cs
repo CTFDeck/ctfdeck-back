@@ -1,6 +1,5 @@
-using SessionModel = CtfDeck.Terminal.Session.Models.Session;
-using CtfDeck.Terminal.Session.Models;
-using CtfDeck.Terminal.Session.Repositories;
+using CtfDeck.Contracts.Models.Sessions;
+using CtfDeck.Abstractions.Ports.Sessions;
 
 namespace CtfDeck.Terminal.Features.Sessions;
 
@@ -16,65 +15,49 @@ public class SessionService
         _repository = repository;
     }
 
-    public SessionModel Create(string name)
-    {
-        return _repository.Create(name);
-    }
+    public SessionDto Create(string name)
+        => _repository.Create(name);
 
-    public SessionModel? GetById(Guid id)
-    {
-        return _repository.GetById(id);
-    }
+    public SessionDto? GetById(Guid id)
+        => _repository.GetById(id);
 
-    public IEnumerable<SessionMetadata> GetAllMetadata()
-    {
-        return _repository.GetAllMetadata();
-    }
+    public IEnumerable<SessionMetadataDto> GetAllMetadata()
+        => _repository.GetAllMetadata();
 
     public bool Update(Guid id, string name, string description)
-    {
-        return _repository.Update(id, name, description);
-    }
+        => _repository.Update(id, name, description);
 
     public bool Delete(Guid id)
-    {
-        return _repository.Delete(id);
-    }
+        => _repository.Delete(id);
 
     public void AddHistoryEntry(Guid sessionId, string command, string output, int exitCode, string workingDirectory)
     {
-        var truncatedOutput = TruncateOutput(output);
-
-        var entry = new HistoryEntry
+        var entry = new HistoryEntryDto
         {
             Id = Guid.NewGuid(),
             Timestamp = DateTime.UtcNow,
             WorkingDirectory = workingDirectory,
             Command = command,
-            Output = truncatedOutput,
+            Output = TruncateOutput(output),
             ExitCode = exitCode
         };
 
         _repository.AddHistoryEntry(sessionId, entry);
     }
 
-    public void UpdateTargets(Guid sessionId, List<SessionTarget> targets)
-    {
-        _repository.UpdateTargets(sessionId, targets);
-    }
+    public void UpdateTargets(Guid sessionId, List<SessionTargetDto> targets)
+        => _repository.UpdateTargets(sessionId, targets);
 
-    public SessionTarget? AddTarget(Guid sessionId, SessionTarget target)
+    public SessionTargetDto? AddTarget(Guid sessionId, SessionTargetDto target)
     {
         target.Description = AutoFillDescription(target.Description, target.Name, target.Address, target.Port);
         return _repository.AddTarget(sessionId, target);
     }
 
     public bool DeleteTarget(Guid sessionId, Guid targetId)
-    {
-        return _repository.DeleteTarget(sessionId, targetId);
-    }
+        => _repository.DeleteTarget(sessionId, targetId);
 
-    public bool UpdateTarget(Guid sessionId, SessionTarget target)
+    public bool UpdateTarget(Guid sessionId, SessionTargetDto target)
     {
         target.Description = AutoFillDescription(target.Description, target.Name, target.Address, target.Port);
         return _repository.UpdateTarget(sessionId, target);

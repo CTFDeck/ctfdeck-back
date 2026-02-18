@@ -1,22 +1,23 @@
-using CtfDeck.Terminal.Session.Data;
-using SessionModel = CtfDeck.Terminal.Session.Models.Session;
-using CtfDeck.Terminal.Session.Models;
+using CtfDeck.Abstractions.Ports.Sessions;
+using CtfDeck.Contracts.Models.Sessions;
+using CtfDeck.Data.Db;
+using CtfDeck.Data.PersistenceModels.Sessions;
 
 namespace CtfDeck.Data.Repositories.Sessions;
 
-public class SessionRepository : ISessionRepository
+public sealed class SessionRepository : ISessionRepository
 {
-    private readonly SessionDbContext _context;
+    private readonly CtfDeckDbContext _context;
     private readonly object _lock = new();
 
-    public SessionRepository(SessionDbContext context)
+    public SessionRepository(CtfDeckDbContext context)
     {
         _context = context;
     }
 
-    public SessionModel Create(string name)
+    public SessionDto Create(string name)
     {
-        var session = new SessionModel
+        var model = new Session
         {
             Id = Guid.NewGuid(),
             Name = name,
@@ -28,35 +29,36 @@ public class SessionRepository : ISessionRepository
 
         lock (_lock)
         {
-            _context.Sessions.Insert(session);
+            _context.Sessions.Insert(model);
         }
 
-        return session;
+        return ToDto(model);
     }
 
-    public SessionModel? GetById(Guid id)
+    public SessionDto? GetById(Guid id)
     {
         lock (_lock)
         {
-            return _context.Sessions.FindById(id);
+            var model = _context.Sessions.FindById(id);
+            return model == null ? null : ToDto(model);
         }
     }
 
-    public IEnumerable<SessionMetadata> GetAllMetadata()
+    public IEnumerable<SessionMetadataDto> GetAllMetadata()
     {
         lock (_lock)
         {
             return _context.Sessions
                 .FindAll()
-                .Select(s => new SessionMetadata
+                .Select(s => new SessionMetadataDto
                 {
                     Id = s.Id,
                     Name = s.Name,
                     Description = s.Description,
                     CreatedAt = s.CreatedAt,
                     UpdatedAt = s.UpdatedAt,
-                    HistoryCount = s.History.Count,
-                    TargetCount = s.Targets.Count
+                    HistoryCount = s.History?.Count ?? 0,
+                    TargetCount = s.Targets?.Count ?? 0
                 })
                 .ToList();
         }
@@ -66,13 +68,14 @@ public class SessionRepository : ISessionRepository
     {
         lock (_lock)
         {
-            var session = _context.Sessions.FindById(id);
-            if (session == null) return false;
+            var model = _context.Sessions.FindById(id);
+            if (model == null) return false;
 
-            session.Name = name;
-            session.Description = description;
-            session.UpdatedAt = DateTime.UtcNow;
-            return _context.Sessions.Update(session);
+            model.Name = name;
+            model.Description = description;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.Sessions.Update(model);
         }
     }
 
@@ -84,44 +87,61 @@ public class SessionRepository : ISessionRepository
         }
     }
 
-    public void AddHistoryEntry(Guid sessionId, HistoryEntry entry)
+    public void AddHistoryEntry(Guid sessionId, HistoryEntryDto entry)
     {
         lock (_lock)
         {
-            var session = _context.Sessions.FindById(sessionId);
-            if (session == null) return;
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return;
 
-            entry.Id = Guid.NewGuid();
-            session.History.Add(entry);
-            session.UpdatedAt = DateTime.UtcNow;
-            _context.Sessions.Update(session);
+            var history = new HistoryEntry
+            {
+                Id = entry.Id == Guid.Empty ? Guid.NewGuid() : entry.Id,
+                Timestamp = entry.Timestamp,
+                WorkingDirectory = entry.WorkingDirectory,
+                Command = entry.Command,
+                Output = entry.Output,
+                ExitCode = entry.ExitCode
+            };
+
+            model.History ??= new List<HistoryEntry>();
+            model.History.Add(history);
+
+            model.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(model);
         }
     }
 
-    public void UpdateTargets(Guid sessionId, List<SessionTarget> targets)
+    public void UpdateTargets(Guid sessionId, List<SessionTargetDto> targets)
     {
         lock (_lock)
         {
-            var session = _context.Sessions.FindById(sessionId);
-            if (session == null) return;
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return;
 
-            session.Targets = targets;
-            session.UpdatedAt = DateTime.UtcNow;
-            _context.Sessions.Update(session);
+            model.Targets = targets.Select(ToPersistence).ToList();
+            model.UpdatedAt = DateTime.UtcNow;
+
+            _context.Sessions.Update(model);
         }
     }
 
-    public SessionTarget? AddTarget(Guid sessionId, SessionTarget target)
+    public SessionTargetDto? AddTarget(Guid sessionId, SessionTargetDto target)
     {
         lock (_lock)
         {
-            var session = _context.Sessions.FindById(sessionId);
-            if (session == null) return null;
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return null;
 
-            target.Id = Guid.NewGuid();
-            session.Targets.Add(target);
-            session.UpdatedAt = DateTime.UtcNow;
-            _context.Sessions.Update(session);
+            if (target.Id == Guid.Empty)
+                target.Id = Guid.NewGuid();
+
+            model.Targets ??= new List<SessionTarget>();
+            model.Targets.Add(ToPersistence(target));
+
+            model.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(model);
+
             return target;
         }
     }
@@ -130,32 +150,74 @@ public class SessionRepository : ISessionRepository
     {
         lock (_lock)
         {
-            var session = _context.Sessions.FindById(sessionId);
-            if (session == null) return false;
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return false;
 
-            var removed = session.Targets.RemoveAll(t => t.Id == targetId);
+            model.Targets ??= new List<SessionTarget>();
+            var removed = model.Targets.RemoveAll(t => t.Id == targetId);
             if (removed == 0) return false;
 
-            session.UpdatedAt = DateTime.UtcNow;
-            _context.Sessions.Update(session);
+            model.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(model);
+
             return true;
         }
     }
 
-    public bool UpdateTarget(Guid sessionId, SessionTarget target)
+    public bool UpdateTarget(Guid sessionId, SessionTargetDto target)
     {
         lock (_lock)
         {
-            var session = _context.Sessions.FindById(sessionId);
-            if (session == null) return false;
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return false;
 
-            var existing = session.Targets.FindIndex(t => t.Id == target.Id);
-            if (existing == -1) return false;
+            model.Targets ??= new List<SessionTarget>();
+            var index = model.Targets.FindIndex(t => t.Id == target.Id);
+            if (index == -1) return false;
 
-            session.Targets[existing] = target;
-            session.UpdatedAt = DateTime.UtcNow;
-            _context.Sessions.Update(session);
+            model.Targets[index] = ToPersistence(target);
+
+            model.UpdatedAt = DateTime.UtcNow;
+            _context.Sessions.Update(model);
+
             return true;
         }
     }
+
+    private static SessionDto ToDto(Session s) => new()
+    {
+        Id = s.Id,
+        Name = s.Name,
+        Description = s.Description,
+        CreatedAt = s.CreatedAt,
+        UpdatedAt = s.UpdatedAt,
+        History = (s.History ?? new List<HistoryEntry>()).Select(h => new HistoryEntryDto
+        {
+            Id = h.Id,
+            Timestamp = h.Timestamp,
+            WorkingDirectory = h.WorkingDirectory,
+            Command = h.Command,
+            Output = h.Output,
+            ExitCode = h.ExitCode
+        }).ToList(),
+        Targets = (s.Targets ?? new List<SessionTarget>()).Select(t => new SessionTargetDto
+        {
+            Id = t.Id,
+            Name = t.Name,
+            Address = t.Address,
+            Port = t.Port,
+            Description = t.Description,
+            Type = (Contracts.Models.Sessions.TargetType)t.Type
+        }).ToList()
+    };
+
+    private static SessionTarget ToPersistence(SessionTargetDto t) => new()
+    {
+        Id = t.Id,
+        Name = t.Name,
+        Address = t.Address,
+        Port = t.Port,
+        Description = t.Description,
+        Type = (CtfDeck.Data.PersistenceModels.Sessions.TargetType)t.Type
+    };
 }

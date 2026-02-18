@@ -1,6 +1,6 @@
 using System.Text;
-using CtfDeck.Terminal.Session.Models;
-using CtfDeck.Terminal.WebSocket;
+using CtfDeck.Contracts.Models.Sessions;
+using CtfDeck.Contracts.Transport;
 
 namespace CtfDeck.Contracts.Protocols.Session;
 
@@ -72,7 +72,7 @@ public class SessionUpdateTargetsRequest
 {
     public Guid MessageId { get; }
     public Guid SessionId { get; }
-    public List<SessionTarget> Targets { get; }
+    public List<SessionTargetDto> Targets { get; }
 
     public SessionUpdateTargetsRequest(ReadOnlySpan<byte> data)
     {
@@ -81,7 +81,7 @@ public class SessionUpdateTargetsRequest
         SessionId = new Guid(data.Slice(17, 16));
 
         var count = BitConverter.ToInt32(data.Slice(33, 4));
-        Targets = new List<SessionTarget>(count);
+        Targets = new List<SessionTargetDto>(count);
 
         var offset = 37;
         for (var i = 0; i < count; i++)
@@ -91,7 +91,7 @@ public class SessionUpdateTargetsRequest
         }
     }
 
-    private static SessionTarget ReadTarget(ReadOnlySpan<byte> data, ref int offset)
+    private static SessionTargetDto ReadTarget(ReadOnlySpan<byte> data, ref int offset)
     {
         var id = new Guid(data.Slice(offset, 16));
         offset += 16;
@@ -118,7 +118,7 @@ public class SessionUpdateTargetsRequest
         var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
         offset += 4;
 
-        return new SessionTarget
+        return new SessionTargetDto()
         {
             Id = id,
             Address = address,
@@ -159,7 +159,7 @@ public class SessionAddTargetRequest
 {
     public Guid MessageId { get; }
     public Guid SessionId { get; }
-    public SessionTarget Target { get; }
+    public SessionTargetDto Target { get; }
 
     public SessionAddTargetRequest(ReadOnlySpan<byte> data)
     {
@@ -190,7 +190,7 @@ public class SessionAddTargetRequest
 
         var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
 
-        Target = new SessionTarget
+        Target = new SessionTargetDto()
         {
             Address = address,
             Port = port,
@@ -220,7 +220,7 @@ public class SessionEditTargetRequest
 {
     public Guid MessageId { get; }
     public Guid SessionId { get; }
-    public SessionTarget Target { get; }
+    public SessionTargetDto Target { get; }
 
     public SessionEditTargetRequest(ReadOnlySpan<byte> data)
     {
@@ -252,7 +252,7 @@ public class SessionEditTargetRequest
 
         var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
 
-        Target = new SessionTarget
+        Target = new SessionTargetDto()
         {
             Id = targetId,
             Address = address,
