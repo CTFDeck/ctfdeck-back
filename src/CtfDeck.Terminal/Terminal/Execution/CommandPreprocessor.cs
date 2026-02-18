@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CtfDeck.Terminal.Terminal;
+namespace CtfDeck.Terminal.Terminal.Execution;
 
 /// <summary>
 /// Prepares commands for shell execution with proper color support

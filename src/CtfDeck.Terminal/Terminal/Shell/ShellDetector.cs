@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CtfDeck.Terminal.Terminal;
+namespace CtfDeck.Terminal.Terminal.Shell;
 
 /// <summary>
 /// Represents a shell configuration for command execution

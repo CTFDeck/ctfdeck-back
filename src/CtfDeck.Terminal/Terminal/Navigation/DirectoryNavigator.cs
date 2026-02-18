@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CtfDeck.Terminal.Terminal;
+namespace CtfDeck.Terminal.Terminal.Navigation;
 
 /// <summary>
 /// Handles directory navigation and path resolution

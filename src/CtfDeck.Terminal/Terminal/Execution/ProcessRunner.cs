@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 
-namespace CtfDeck.Terminal.Terminal;
+namespace CtfDeck.Terminal.Terminal.Execution;
 
 public static class ProcessRunner
 {
