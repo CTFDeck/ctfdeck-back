@@ -1,6 +1,7 @@
-using System.Runtime.InteropServices;
+using CtfDeck.Terminal.Terminal.Core;
+using CtfDeck.Terminal.Terminal.Shell;
 
-namespace CtfDeck.Terminal.Terminal;
+namespace CtfDeck.Terminal.Terminal.Navigation;
 
 /// <summary>
 /// Handles directory navigation and path resolution
@@ -78,7 +79,7 @@ public sealed class DirectoryNavigator
         {
             await onOutput(error + "\n", true);
         }
-        catch { }
+        catch { /* Ignore */ }
 
         return CommandResult.Failure(_currentDirectory, error);
     }

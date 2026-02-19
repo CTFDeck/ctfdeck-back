@@ -1,22 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CtfDeck.Terminal.Terminal;
-
-/// <summary>
-/// Represents a shell configuration for command execution
-/// </summary>
-public enum ShellType
-{
-    Auto,
-    Bash,
-    Cmd,
-    PowerShell
-}
-
-/// <summary>
-/// Shell configuration with executable path and arguments
-/// </summary>
-public sealed record ShellConfig(string Executable, string ArgumentPrefix);
+namespace CtfDeck.Terminal.Terminal.Shell;
 
 /// <summary>
 /// Detects and provides shell configurations for the current platform

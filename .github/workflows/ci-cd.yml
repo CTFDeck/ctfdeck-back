@@ -14,17 +14,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # SDK récent pour C# 13 (même si tu cibles net8.0)
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-          dotnet-quality: 'ga'
+          dotnet-version: '9.0.x'
 
       - name: Restore dependencies
         run: dotnet restore ./CtfDeck.sln
 
       - name: Check code formatting
-        run: dotnet format ./CtfDeck.sln --verify-no-changes --verbosity diagnostic
+        run: dotnet format ./CtfDeck.sln --verify-no-changes
 
       - name: Build
         run: dotnet build ./CtfDeck.sln --configuration Release --no-restore
@@ -75,15 +75,14 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-          dotnet-quality: 'ga'
+          dotnet-version: '9.0.x'
 
       - name: Restore dependencies
         run: dotnet restore ./CtfDeck.sln
 
       - name: Publish Linux (single file)
         run: |
-          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
             -c Release -r linux-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -95,7 +94,7 @@ jobs:
 
       - name: Publish Windows (single file)
         run: |
-          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
             -c Release -r win-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -107,7 +106,7 @@ jobs:
 
       - name: Publish macOS Intel (single file)
         run: |
-          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
             -c Release -r osx-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -119,12 +118,13 @@ jobs:
 
       - name: Publish macOS ARM (single file)
         run: |
-          dotnet publish ./src/CtfDeck.Terminal/CtfDeck.Terminal.csproj \
+          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
             -c Release -r osx-arm64 \
             --self-contained true \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=false \
             -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true \
             -o ./publish/macos-arm
@@ -213,7 +213,6 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/CTFDeck/ctfdeck-back.wiki.git wiki
 
-
       - name: Deploy documentation to Wiki
         run: |
           rm -rf wiki/*
@@ -221,19 +220,16 @@ jobs:
           cp README.md wiki/Home.md
 
       - name: Check for changes
-        id: changes
         run: |
           cd wiki
           git add .
           if git diff-index --quiet HEAD; then
-            echo "No changes to commit"
             echo "skip=true" >> $GITHUB_ENV
           else
-            echo "Changes detected"
             echo "skip=false" >> $GITHUB_ENV
           fi
 
-      - name: Push changes to Wiki
+      - name: Push changes to wiki
         if: env.skip == 'false'
         run: |
           cd wiki

@@ -1,3 +1,8 @@
+using CtfDeck.Terminal.Terminal.Shell;
+using CtfDeck.Terminal.Terminal.Navigation;
+using CtfDeck.Terminal.Terminal.Core;
+using CtfDeck.Terminal.Terminal.Execution;
+
 namespace CtfDeck.Terminal.Terminal;
 
 public delegate Task OutputReceivedHandler(string data, bool isError);

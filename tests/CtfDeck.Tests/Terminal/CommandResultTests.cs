@@ -1,5 +1,4 @@
-﻿using Xunit;
-using CtfDeck.Terminal.Terminal;
+﻿using CtfDeck.Terminal.Terminal.Core;
 
 namespace CtfDeck.Tests.Terminal;
 

@@ -1,4 +1,4 @@
-namespace CtfDeck.Terminal.Terminal;
+namespace CtfDeck.Terminal.Terminal.Core;
 
 /// <summary>
 /// Immutable result of a command execution
