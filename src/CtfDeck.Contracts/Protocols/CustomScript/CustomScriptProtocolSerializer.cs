@@ -1,5 +1,6 @@
 using CtfDeck.Contracts.Models.Scripts;
 using CtfDeck.Contracts.Transport;
+
 namespace CtfDeck.Contracts.Protocols.CustomScript;
 
 public static class CustomScriptProtocolSerializer
@@ -15,22 +16,10 @@ public static class CustomScriptProtocolSerializer
     }
 
     public static byte[] SerializeUpdateResult(Guid messageId, bool success)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.CustomScriptUpdateResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        return writer.ToArray();
-    }
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.CustomScriptUpdateResult, messageId, success);
 
     public static byte[] SerializeDeleteResult(Guid messageId, bool success)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.CustomScriptDeleteResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        return writer.ToArray();
-    }
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.CustomScriptDeleteResult, messageId, success);
 
     public static byte[] SerializeListResult(Guid messageId, List<CustomScriptDto> scripts)
     {
@@ -48,13 +37,7 @@ public static class CustomScriptProtocolSerializer
     }
 
     public static byte[] SerializeError(Guid messageId, string error)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.CustomScriptOperationError);
-        writer.WriteGuid(messageId);
-        writer.WriteString(error);
-        return writer.ToArray();
-    }
+        => BinaryProtocolSerializer.SerializeError(MessageType.CustomScriptOperationError, messageId, error);
 
     private static void WriteCustomScript(PooledBufferWriter writer, CustomScriptDto script)
     {

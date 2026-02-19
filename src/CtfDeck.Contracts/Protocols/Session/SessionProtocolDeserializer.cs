@@ -86,47 +86,10 @@ public class SessionUpdateTargetsRequest
         var offset = 37;
         for (var i = 0; i < count; i++)
         {
-            var target = ReadTarget(data, ref offset);
-            Targets.Add(target);
+            var id = new Guid(data.Slice(offset, 16));
+            offset += 16;
+            Targets.Add(TargetBinaryReader.ReadFields(data, ref offset, id));
         }
-    }
-
-    private static SessionTargetDto ReadTarget(ReadOnlySpan<byte> data, ref int offset)
-    {
-        var id = new Guid(data.Slice(offset, 16));
-        offset += 16;
-
-        var addrLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var address = Encoding.UTF8.GetString(data.Slice(offset, addrLen));
-        offset += addrLen;
-
-        var portValue = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        int? port = portValue == -1 ? null : portValue;
-
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
-        offset += descLen;
-
-        var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-
-        return new SessionTargetDto()
-        {
-            Id = id,
-            Address = address,
-            Port = port,
-            Name = name,
-            Description = description,
-            Type = type
-        };
     }
 }
 
@@ -163,41 +126,12 @@ public class SessionAddTargetRequest
 
     public SessionAddTargetRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][4B addrLen][addr][4B port][4B nameLen][name][4B descLen][desc][4B type]
+        // Format: [1B type][16B msgId][16B sessionId][target fields...]
         MessageId = new Guid(data.Slice(1, 16));
         SessionId = new Guid(data.Slice(17, 16));
 
         var offset = 33;
-
-        var addrLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var address = Encoding.UTF8.GetString(data.Slice(offset, addrLen));
-        offset += addrLen;
-
-        var portValue = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        int? port = portValue == -1 ? null : portValue;
-
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
-        offset += descLen;
-
-        var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
-
-        Target = new SessionTargetDto()
-        {
-            Address = address,
-            Port = port,
-            Name = name,
-            Description = description,
-            Type = type
-        };
+        Target = TargetBinaryReader.ReadFields(data, ref offset);
     }
 }
 
@@ -224,43 +158,13 @@ public class SessionEditTargetRequest
 
     public SessionEditTargetRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][16B targetId][4B addrLen][addr][4B port][4B nameLen][name][4B descLen][desc][4B type]
+        // Format: [1B type][16B msgId][16B sessionId][16B targetId][target fields...]
         MessageId = new Guid(data.Slice(1, 16));
         SessionId = new Guid(data.Slice(17, 16));
         var targetId = new Guid(data.Slice(33, 16));
 
         var offset = 49;
-
-        var addrLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var address = Encoding.UTF8.GetString(data.Slice(offset, addrLen));
-        offset += addrLen;
-
-        var portValue = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        int? port = portValue == -1 ? null : portValue;
-
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        var description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
-        offset += descLen;
-
-        var type = (TargetType)BitConverter.ToInt32(data.Slice(offset, 4));
-
-        Target = new SessionTargetDto()
-        {
-            Id = targetId,
-            Address = address,
-            Port = port,
-            Name = name,
-            Description = description,
-            Type = type
-        };
+        Target = TargetBinaryReader.ReadFields(data, ref offset, targetId);
     }
 }
 

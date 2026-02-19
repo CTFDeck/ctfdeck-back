@@ -16,13 +16,7 @@ public static class SessionProtocolSerializer
     }
 
     public static byte[] SerializeSetActiveResult(Guid messageId, bool success)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionSetActiveResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        return writer.ToArray();
-    }
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.SessionSetActiveResult, messageId, success);
 
     public static byte[] SerializeLoadResult(Guid messageId, bool success, SessionDto? session)
     {
@@ -57,31 +51,29 @@ public static class SessionProtocolSerializer
     }
 
     public static byte[] SerializeUpdateResult(Guid messageId, bool success)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionUpdateResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        return writer.ToArray();
-    }
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.SessionUpdateResult, messageId, success);
 
     public static byte[] SerializeDeleteResult(Guid messageId, bool success)
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.SessionDeleteResult, messageId, success);
+
+    public static byte[] SerializeError(Guid messageId, string error)
+        => BinaryProtocolSerializer.SerializeError(MessageType.SessionOperationError, messageId, error);
+
+    public static byte[] SerializeAddTargetResult(Guid messageId, bool success, Guid targetId)
     {
         using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionDeleteResult);
+        writer.WriteByte((byte)MessageType.SessionAddTargetResult);
         writer.WriteGuid(messageId);
         writer.WriteByte((byte)(success ? 1 : 0));
+        writer.WriteGuid(targetId);
         return writer.ToArray();
     }
 
-    public static byte[] SerializeError(Guid messageId, string error)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionOperationError);
-        writer.WriteGuid(messageId);
-        writer.WriteString(error);
-        return writer.ToArray();
-    }
+    public static byte[] SerializeDeleteTargetResult(Guid messageId, bool success)
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.SessionDeleteTargetResult, messageId, success);
+
+    public static byte[] SerializeEditTargetResult(Guid messageId, bool success)
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.SessionEditTargetResult, messageId, success);
 
     private static void WriteSession(PooledBufferWriter writer, SessionDto session)
     {
@@ -112,34 +104,6 @@ public static class SessionProtocolSerializer
         writer.WriteString(entry.Command ?? string.Empty);
         writer.WriteString(entry.Output ?? string.Empty);
         writer.WriteInt32(entry.ExitCode);
-    }
-
-    public static byte[] SerializeAddTargetResult(Guid messageId, bool success, Guid targetId)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionAddTargetResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        writer.WriteGuid(targetId);
-        return writer.ToArray();
-    }
-
-    public static byte[] SerializeDeleteTargetResult(Guid messageId, bool success)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionDeleteTargetResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        return writer.ToArray();
-    }
-
-    public static byte[] SerializeEditTargetResult(Guid messageId, bool success)
-    {
-        using var writer = new PooledBufferWriter();
-        writer.WriteByte((byte)MessageType.SessionEditTargetResult);
-        writer.WriteGuid(messageId);
-        writer.WriteByte((byte)(success ? 1 : 0));
-        return writer.ToArray();
     }
 
     private static void WriteSessionTarget(PooledBufferWriter writer, SessionTargetDto target)

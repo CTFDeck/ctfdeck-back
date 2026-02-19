@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using System.Net.WebSockets;
+using System.Threading.Channels;
 using System.Text;
 using CtfDeck.Contracts.Transport;
 
@@ -11,24 +11,22 @@ namespace CtfDeck.ServerWs.WebSocket;
 /// </summary>
 public sealed class OutputBatcher : IAsyncDisposable
 {
-    private readonly System.Net.WebSockets.WebSocket _socket;
+    private readonly WebSocketSender _sender;
     private readonly Guid _messageId;
     private readonly Channel<(string Data, bool IsError)> _channel;
     private readonly Task _processingTask;
     private readonly CancellationTokenSource _cts;
     private readonly StringBuilder _accumulatedOutput = new();
     private readonly object _outputLock = new();
-    private readonly SemaphoreSlim? _sendLock;
 
     // Batching configuration
     private const int MaxBatchSize = 8192;  // 8KB max before force-send
     private const int BatchDelayMs = 5;      // 5ms max delay for batching (200Hz)
 
-    public OutputBatcher(System.Net.WebSockets.WebSocket socket, Guid messageId, SemaphoreSlim? sendLock = null)
+    public OutputBatcher(WebSocketSender sender, Guid messageId)
     {
-        _socket = socket;
+        _sender = sender;
         _messageId = messageId;
-        _sendLock = sendLock;
         _cts = new CancellationTokenSource();
 
         // Unbounded channel for maximum throughput
@@ -141,28 +139,11 @@ public sealed class OutputBatcher : IAsyncDisposable
 
     private async Task FlushBatchAsync(StringBuilder batch, bool isError, CancellationToken ct)
     {
-        if (batch.Length == 0 || _socket.State != WebSocketState.Open)
-            return;
+        if (batch.Length == 0) return;
 
         var messageType = isError ? MessageType.StreamError : MessageType.StreamOutput;
         var data = BinaryProtocolSerializer.SerializeStreamChunk(messageType, _messageId, batch.ToString());
-
-        if (_sendLock != null)
-        {
-            await _sendLock.WaitAsync(ct);
-            try
-            {
-                await _socket.SendAsync(data, WebSocketMessageType.Binary, true, ct);
-            }
-            finally
-            {
-                _sendLock.Release();
-            }
-        }
-        else
-        {
-            await _socket.SendAsync(data, WebSocketMessageType.Binary, true, ct);
-        }
+        await _sender.SendAsync(data, ct);
     }
 
     /// <summary>
@@ -173,27 +154,8 @@ public sealed class OutputBatcher : IAsyncDisposable
         _channel.Writer.Complete();
         await _processingTask;
 
-        if (_socket.State == WebSocketState.Open)
-        {
-            var data = BinaryProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
-
-            if (_sendLock != null)
-            {
-                await _sendLock.WaitAsync(CancellationToken.None);
-                try
-                {
-                    await _socket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
-                }
-                finally
-                {
-                    _sendLock.Release();
-                }
-            }
-            else
-            {
-                await _socket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
-            }
-        }
+        var data = BinaryProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
+        await _sender.SendAsync(data);
 
         lock (_outputLock)
         {

@@ -1,11 +1,10 @@
-using System.Net.WebSockets;
 using CtfDeck.Terminal.Features.Sessions;
 using CtfDeck.Contracts.Transport;
 using CtfDeck.Contracts.Protocols.Session;
 
 namespace CtfDeck.Terminal.Handlers;
 
-public class SessionMessageHandler
+public sealed class SessionMessageHandler : MessageHandlerBase
 {
     private readonly SessionService _sessionService;
     private readonly ActiveSessionManager _activeSessionManager;
@@ -16,69 +15,28 @@ public class SessionMessageHandler
         _activeSessionManager = activeSessionManager;
     }
 
-    public async Task<bool> TryHandleAsync(
-        string clientId,
-        ReadOnlyMemory<byte> data,
-        System.Net.WebSockets.WebSocket webSocket,
-        CancellationToken cancellationToken,
-        SemaphoreSlim? sendLock = null)
+    protected override bool CanHandle(MessageType type)
+        => SessionProtocolDeserializer.IsSessionMessage(type);
+
+    protected override byte[] SerializeError(Guid messageId, string error)
+        => SessionProtocolSerializer.SerializeError(messageId, error);
+
+    protected override byte[] Dispatch(string clientId, MessageType type, ReadOnlySpan<byte> data)
     {
-        if (data.Length == 0) return false;
-
-        var messageType = (MessageType)data.Span[0];
-        if (!SessionProtocolDeserializer.IsSessionMessage(messageType)) return false;
-
-        byte[] response;
-
-        try
+        return type switch
         {
-            response = messageType switch
-            {
-                MessageType.SessionCreate => HandleCreate(data.Span),
-                MessageType.SessionSetActive => HandleSetActive(clientId, data.Span),
-                MessageType.SessionLoad => HandleLoad(data.Span),
-                MessageType.SessionList => HandleList(data.Span),
-                MessageType.SessionDelete => HandleDelete(data.Span),
-                MessageType.SessionUpdateTargets => HandleUpdateTargets(data.Span),
-                MessageType.SessionUpdate => HandleUpdate(data.Span),
-                MessageType.SessionAddTarget => HandleAddTarget(data.Span),
-                MessageType.SessionDeleteTarget => HandleDeleteTarget(data.Span),
-                MessageType.SessionEditTarget => HandleEditTarget(data.Span),
-                _ => throw new InvalidOperationException($"Unknown session message type: {messageType}")
-            };
-        }
-        catch (Exception ex)
-        {
-            var msgId = data.Length >= 17 ? new Guid(data.Span.Slice(1, 16)) : Guid.Empty;
-            response = SessionProtocolSerializer.SerializeError(msgId, ex.Message);
-        }
-
-        if (sendLock != null)
-        {
-            await sendLock.WaitAsync(cancellationToken);
-            try
-            {
-                await webSocket.SendAsync(
-                    response,
-                    WebSocketMessageType.Binary,
-                    true,
-                    cancellationToken);
-            }
-            finally
-            {
-                sendLock.Release();
-            }
-        }
-        else
-        {
-            await webSocket.SendAsync(
-                response,
-                WebSocketMessageType.Binary,
-                true,
-                cancellationToken);
-        }
-
-        return true;
+            MessageType.SessionCreate => HandleCreate(data),
+            MessageType.SessionSetActive => HandleSetActive(clientId, data),
+            MessageType.SessionLoad => HandleLoad(data),
+            MessageType.SessionList => HandleList(data),
+            MessageType.SessionDelete => HandleDelete(data),
+            MessageType.SessionUpdateTargets => HandleUpdateTargets(data),
+            MessageType.SessionUpdate => HandleUpdate(data),
+            MessageType.SessionAddTarget => HandleAddTarget(data),
+            MessageType.SessionDeleteTarget => HandleDeleteTarget(data),
+            MessageType.SessionEditTarget => HandleEditTarget(data),
+            _ => throw new InvalidOperationException($"Unknown session message type: {type}")
+        };
     }
 
     private byte[] HandleCreate(ReadOnlySpan<byte> data)
@@ -120,7 +78,7 @@ public class SessionMessageHandler
     {
         var request = new SessionUpdateTargetsRequest(data);
         _sessionService.UpdateTargets(request.SessionId, request.Targets);
-        return SessionProtocolSerializer.SerializeDeleteResult(request.MessageId, true);
+        return SessionProtocolSerializer.SerializeUpdateResult(request.MessageId, true);
     }
 
     private byte[] HandleUpdate(ReadOnlySpan<byte> data)

@@ -1,11 +1,10 @@
-using System.Net.WebSockets;
 using CtfDeck.Terminal.Features.Scripts;
 using CtfDeck.Contracts.Transport;
 using CtfDeck.Contracts.Protocols.CustomScript;
 
 namespace CtfDeck.Terminal.Handlers;
 
-public class CustomScriptMessageHandler
+public sealed class CustomScriptMessageHandler : MessageHandlerBase
 {
     private readonly CustomScriptService _scriptService;
 
@@ -14,63 +13,22 @@ public class CustomScriptMessageHandler
         _scriptService = scriptService;
     }
 
-    public async Task<bool> TryHandleAsync(
-        string clientId,
-        ReadOnlyMemory<byte> data,
-        System.Net.WebSockets.WebSocket webSocket,
-        CancellationToken cancellationToken,
-        SemaphoreSlim? sendLock = null)
+    protected override bool CanHandle(MessageType type)
+        => CustomScriptProtocolDeserializer.IsCustomScriptMessage(type);
+
+    protected override byte[] SerializeError(Guid messageId, string error)
+        => CustomScriptProtocolSerializer.SerializeError(messageId, error);
+
+    protected override byte[] Dispatch(string clientId, MessageType type, ReadOnlySpan<byte> data)
     {
-        if (data.Length == 0) return false;
-
-        var messageType = (MessageType)data.Span[0];
-        if (!CustomScriptProtocolDeserializer.IsCustomScriptMessage(messageType)) return false;
-
-        byte[] response;
-
-        try
+        return type switch
         {
-            response = messageType switch
-            {
-                MessageType.CustomScriptCreate => HandleCreate(data.Span),
-                MessageType.CustomScriptUpdate => HandleUpdate(data.Span),
-                MessageType.CustomScriptDelete => HandleDelete(data.Span),
-                MessageType.CustomScriptList => HandleList(data.Span),
-                _ => throw new InvalidOperationException($"Unknown custom script message type: {messageType}")
-            };
-        }
-        catch (Exception ex)
-        {
-            var msgId = data.Length >= 17 ? new Guid(data.Span.Slice(1, 16)) : Guid.Empty;
-            response = CustomScriptProtocolSerializer.SerializeError(msgId, ex.Message);
-        }
-
-        if (sendLock != null)
-        {
-            await sendLock.WaitAsync(cancellationToken);
-            try
-            {
-                await webSocket.SendAsync(
-                    response,
-                    WebSocketMessageType.Binary,
-                    true,
-                    cancellationToken);
-            }
-            finally
-            {
-                sendLock.Release();
-            }
-        }
-        else
-        {
-            await webSocket.SendAsync(
-                response,
-                WebSocketMessageType.Binary,
-                true,
-                cancellationToken);
-        }
-
-        return true;
+            MessageType.CustomScriptCreate => HandleCreate(data),
+            MessageType.CustomScriptUpdate => HandleUpdate(data),
+            MessageType.CustomScriptDelete => HandleDelete(data),
+            MessageType.CustomScriptList => HandleList(data),
+            _ => throw new InvalidOperationException($"Unknown custom script message type: {type}")
+        };
     }
 
     private byte[] HandleCreate(ReadOnlySpan<byte> data)
