@@ -229,7 +229,7 @@ jobs:
             echo "skip=false" >> $GITHUB_ENV
           fi
 
-      - name: Push changes to Wiki
+      - name: Push changes to wiki
         if: env.skip == 'false'
         run: |
           cd wiki
