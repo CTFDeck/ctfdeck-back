@@ -108,8 +108,6 @@ public sealed class PooledBufferWriter : IDisposable
     }
 
     public int Length => _position;
-    public ReadOnlySpan<byte> WrittenSpan => _buffer.AsSpan(0, _position);
-    public ReadOnlyMemory<byte> WrittenMemory => _buffer.AsMemory(0, _position);
 
     public void WriteByte(byte value)
     {
@@ -175,8 +173,6 @@ public sealed class PooledBufferWriter : IDisposable
         _buffer.AsSpan(0, _position).CopyTo(result);
         return result;
     }
-
-    public void Reset() => _position = 0;
 
     public void Dispose()
     {
@@ -245,6 +241,24 @@ public static class BinaryProtocolSerializer
         writer.WriteString(error);
         writer.WriteString(workingDirectory);
         writer.WriteGuid(messageId);
+        return writer.ToArray();
+    }
+
+    public static byte[] SerializeSimpleResult(MessageType type, Guid messageId, bool success)
+    {
+        using var writer = new PooledBufferWriter(18);
+        writer.WriteByte((byte)type);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        return writer.ToArray();
+    }
+
+    public static byte[] SerializeError(MessageType errorType, Guid messageId, string error)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)errorType);
+        writer.WriteGuid(messageId);
+        writer.WriteString(error);
         return writer.ToArray();
     }
 
