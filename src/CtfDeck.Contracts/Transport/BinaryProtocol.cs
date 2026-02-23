@@ -54,7 +54,35 @@ public enum MessageType : byte
     CustomScriptUpdateResult = 41,
     CustomScriptDeleteResult = 42,
     CustomScriptListResult = 43,
-    CustomScriptOperationError = 49
+    CustomScriptOperationError = 49,
+
+    // WriteUp requests (client → server)
+    WriteUpCreate = 50,
+    WriteUpUpdate = 51,
+    WriteUpDelete = 52,
+    WriteUpList = 53,
+    WriteUpLoad = 54,
+
+    // WriteUp responses (server → client)
+    WriteUpCreateResult = 60,
+    WriteUpUpdateResult = 61,
+    WriteUpDeleteResult = 62,
+    WriteUpListResult = 63,
+    WriteUpLoadResult = 64,
+    WriteUpOperationError = 69,
+
+    // Media requests (client → server)
+    MediaUpload = 70,
+    MediaLoad = 71,
+    MediaDelete = 72,
+    MediaList = 73,
+
+    // Media responses (server → client)
+    MediaUploadResult = 80,
+    MediaLoadResult = 81,
+    MediaDeleteResult = 82,
+    MediaListResult = 83,
+    MediaOperationError = 89
 }
 
 /// <summary>
