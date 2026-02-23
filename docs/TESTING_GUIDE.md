@@ -83,6 +83,17 @@ dotnet test --filter "FullyQualifiedName~MyTestClass.MyTestMethod"
 dotnet test --test-adapter-path:. --logger:trx
 ```
 
+## Test Structure
+
+The test suite covers all protocol layers and terminal functionality:
+
+| Directory | Files | Coverage |
+|-----------|-------|----------|
+| `Terminal/` | `CommandResultTests.cs`, `TerminalExecutorTests.cs`, `TerminalServiceTests.cs` | Shell interaction, cd navigation, REPL loop |
+| `WebSocket/` | `BinaryProtocolTests.cs`, `OutputBatcherTests.cs`, `WebSocketServerTests.cs`, `WebSocketIntegrationTests.cs` | Binary protocol round-trips, batching, server lifecycle, real WebSocket connections |
+| `WriteUp/` | `WriteUpProtocolTests.cs` | Write-up protocol serialize/deserialize round-trips, unicode content, message type range |
+| `Media/` | `MediaProtocolTests.cs` | Media protocol serialize/deserialize round-trips, large binary data, message type range |
+
 ## Continuous Integration
 
 The test suite is designed to run in CI/CD pipelines. The project includes GitHub Actions workflows (in `.github/workflows/`) that automatically run tests on push and pull requests.

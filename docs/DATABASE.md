@@ -31,6 +31,26 @@ Collection storing reusable command templates (custom scripts).
 |-------|------|--------|
 | `_id` (Id) | GUID | Yes |
 
+### `writeups`
+
+Collection storing CTF write-ups (reports). Each write-up is linked to a session via `SessionId`.
+
+**Indexes:**
+| Field | Type | Unique |
+|-------|------|--------|
+| `_id` (Id) | GUID | Yes |
+| `SessionId` | GUID | No |
+
+### `media`
+
+Collection storing binary blobs (images, videos, PDFs, etc.) that can be referenced from write-up markdown content.
+
+**Indexes:**
+| Field | Type | Unique |
+|-------|------|--------|
+| `_id` (Id) | GUID | Yes |
+| `FileName` | String | No |
+
 ---
 
 ## Document Schemas
@@ -230,6 +250,77 @@ Stored as integer in database.
 }
 ```
 
+### WriteUp
+
+Root document representing a CTF write-up (report).
+
+```json
+{
+  "_id": "GUID",
+  "SessionId": "GUID",
+  "Name": "string",
+  "Content": "string (markdown)",
+  "CreatedAt": "DateTime (UTC)",
+  "UpdatedAt": "DateTime (UTC)"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | `Guid` | Primary key, auto-generated |
+| `SessionId` | `Guid` | Foreign key to Session (mandatory) |
+| `Name` | `string` | Write-up title |
+| `Content` | `string` | Markdown body (default empty) |
+| `CreatedAt` | `DateTime` | Creation timestamp (UTC) |
+| `UpdatedAt` | `DateTime` | Last modification timestamp (UTC) |
+
+### WriteUp Example
+
+```json
+{
+  "_id": { "$guid": "d4e5f6a7-b8c9-0123-4567-89abcdef0123" },
+  "SessionId": { "$guid": "550e8400-e29b-41d4-a716-446655440000" },
+  "Name": "HTB Machine Writeup",
+  "Content": "# Enumeration\n\n## Nmap\n\n```\nnmap -sV 10.10.10.100\n```\n\nFound ports 22 and 80 open...",
+  "CreatedAt": { "$date": "2024-02-04T12:00:00Z" },
+  "UpdatedAt": { "$date": "2024-02-04T14:30:00Z" }
+}
+```
+
+### Media
+
+Root document representing a binary blob (image, video, PDF, etc.).
+
+```json
+{
+  "_id": "GUID",
+  "FileName": "string",
+  "MimeType": "string",
+  "Data": "byte[] (binary)",
+  "CreatedAt": "DateTime (UTC)"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | `Guid` | Primary key, auto-generated |
+| `FileName` | `string` | Original file name |
+| `MimeType` | `string` | MIME type (e.g., `image/png`, `application/pdf`) |
+| `Data` | `byte[]` | Binary blob (max 8 MB) |
+| `CreatedAt` | `DateTime` | Upload timestamp (UTC) |
+
+### Media Example
+
+```json
+{
+  "_id": { "$guid": "f1e2d3c4-b5a6-9780-1234-567890abcdef" },
+  "FileName": "nmap-scan.png",
+  "MimeType": "image/png",
+  "Data": { "$binary": "iVBORw0KGgoAAAANSUhEUg..." },
+  "CreatedAt": { "$date": "2024-02-04T12:05:00Z" }
+}
+```
+
 ---
 
 ## Configuration
@@ -243,6 +334,8 @@ BsonMapper.Global.Entity<Session>().Id(x => x.Id);
 BsonMapper.Global.Entity<HistoryEntry>().Id(x => x.Id);
 BsonMapper.Global.Entity<SessionTarget>().Id(x => x.Id);
 BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
+BsonMapper.Global.Entity<WriteUp>().Id(x => x.Id);
+BsonMapper.Global.Entity<Media>().Id(x => x.Id);
 ```
 
 ### Connection Strings
@@ -278,9 +371,19 @@ Frontend (Electron/Angular)
          │                              ▼
          │                    CustomScriptRepository
          │                              │
+         ├── WriteUp Commands ──► WriteUpService
+         │                              │
+         │                              ▼
+         │                      WriteUpRepository
+         │                              │
+         ├── Media Commands ───► MediaService
+         │                              │
+         │                              ▼
+         │                       MediaRepository
+         │                              │
          └──────────────────────────────┤
                                         ▼
-                                 SessionDbContext
+                                  CtfDeckDbContext
                                         │
                                         ▼
                                     LiteDB File
@@ -293,9 +396,12 @@ Frontend (Electron/Angular)
 | Constraint | Value |
 |------------|-------|
 | Max output per command | 10 KB |
+| Max media file size | 8 MB |
 | Session name | No limit (string) |
 | History entries per session | No limit |
 | Targets per session | No limit |
+| Write-ups per session | No limit |
+| Media entries | No limit (global) |
 | Database file size | LiteDB limit (~4GB) |
 
 ---
@@ -304,10 +410,16 @@ Frontend (Electron/Angular)
 
 | Purpose | Path |
 |---------|------|
-| Session Models | `src/CtfDeck.Terminal/Session/Models/` |
-| Script Models | `src/CtfDeck.Terminal/Script/Models/` |
-| DbContext | `src/CtfDeck.Terminal/Session/Data/SessionDbContext.cs` |
-| Session Repository | `src/CtfDeck.Terminal/Session/Repositories/SessionRepository.cs` |
-| Script Repository | `src/CtfDeck.Terminal/Script/Repositories/CustomScriptRepository.cs` |
-| Session Service | `src/CtfDeck.Terminal/Session/Services/SessionService.cs` |
-| Script Service | `src/CtfDeck.Terminal/Script/Services/CustomScriptService.cs` |
+| DbContext | `src/CtfDeck.Data/Db/CtfDeckDbContext.cs` |
+| Session Persistence Model | `src/CtfDeck.Data/PersistenceModels/Sessions/` |
+| Script Persistence Model | `src/CtfDeck.Data/PersistenceModels/Scripts/` |
+| WriteUp Persistence Model | `src/CtfDeck.Data/PersistenceModels/WriteUps/` |
+| Media Persistence Model | `src/CtfDeck.Data/PersistenceModels/Media/` |
+| Session Repository | `src/CtfDeck.Data/Repositories/Sessions/SessionRepository.cs` |
+| Script Repository | `src/CtfDeck.Data/Repositories/Scripts/CustomScriptRepository.cs` |
+| WriteUp Repository | `src/CtfDeck.Data/Repositories/WriteUps/WriteUpRepository.cs` |
+| Media Repository | `src/CtfDeck.Data/Repositories/Media/MediaRepository.cs` |
+| Session Service | `src/CtfDeck.Terminal/Features/Sessions/SessionService.cs` |
+| Script Service | `src/CtfDeck.Terminal/Features/Scripts/CustomScriptService.cs` |
+| WriteUp Service | `src/CtfDeck.Terminal/Features/WriteUps/WriteUpService.cs` |
+| Media Service | `src/CtfDeck.Terminal/Features/Media/MediaService.cs` |
