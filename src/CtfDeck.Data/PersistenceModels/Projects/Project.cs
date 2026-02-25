@@ -1,13 +1,11 @@
-namespace CtfDeck.Contracts.Models.Sessions;
+namespace CtfDeck.Data.PersistenceModels.Projects;
 
-public sealed class SessionMetadataDto
+public class Project
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
-    public int HistoryCount { get; set; }
-    public int TargetCount { get; set; }
-    public Guid? ProjectId { get; set; }
+    public List<ProjectFolder> Folders { get; set; } = new();
 }

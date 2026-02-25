@@ -7,6 +7,7 @@ public sealed class SessionDto
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public Guid? ProjectId { get; set; }
     public List<HistoryEntryDto> History { get; set; } = new();
     public List<SessionTargetDto> Targets { get; set; } = new();
 }

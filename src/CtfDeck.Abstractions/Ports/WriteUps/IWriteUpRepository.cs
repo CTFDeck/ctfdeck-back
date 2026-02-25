@@ -9,4 +9,8 @@ public interface IWriteUpRepository
     List<WriteUpMetadataDto> GetBySessionId(Guid sessionId);
     bool Update(Guid id, string name, string content);
     bool Delete(Guid id);
+
+    List<WriteUpMetadataDto> GetByFolderId(Guid folderId);
+    bool SetFolderId(Guid writeUpId, Guid? folderId);
+    void ClearFolderId(Guid folderId);
 }

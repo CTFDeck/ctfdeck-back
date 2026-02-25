@@ -7,6 +7,7 @@ public class Session
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public Guid? ProjectId { get; set; }
     public List<HistoryEntry> History { get; set; } = new();
     public List<SessionTarget> Targets { get; set; } = new();
 }

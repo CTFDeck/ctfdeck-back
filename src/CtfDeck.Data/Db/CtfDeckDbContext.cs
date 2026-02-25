@@ -3,6 +3,7 @@ using CtfDeck.Data.PersistenceModels.Sessions;
 using CtfDeck.Data.PersistenceModels.Scripts;
 using CtfDeck.Data.PersistenceModels.WriteUps;
 using CtfDeck.Data.PersistenceModels.Media;
+using CtfDeck.Data.PersistenceModels.Projects;
 
 namespace CtfDeck.Data.Db;
 
@@ -16,6 +17,7 @@ public sealed class CtfDeckDbContext : IDisposable
     private readonly ILiteCollection<CustomScript> _customScripts;
     private readonly ILiteCollection<WriteUp> _writeUps;
     private readonly ILiteCollection<PersistenceModels.Media.Media> _media;
+    private readonly ILiteCollection<Project> _projects;
     private bool _disposed;
 
     public CtfDeckDbContext(string? databasePath = null)
@@ -43,12 +45,20 @@ public sealed class CtfDeckDbContext : IDisposable
         _media = _database.GetCollection<PersistenceModels.Media.Media>("media");
         _media.EnsureIndex(x => x.Id, unique: true);
         _media.EnsureIndex(x => x.FileName);
+
+        _projects = _database.GetCollection<Project>("projects");
+        _projects.EnsureIndex(x => x.Id, unique: true);
+        _projects.EnsureIndex(x => x.Name);
+
+        _sessions.EnsureIndex(x => x.ProjectId);
+        _writeUps.EnsureIndex(x => x.FolderId);
     }
 
     public ILiteCollection<Session> Sessions => _sessions;
     public ILiteCollection<CustomScript> CustomScripts => _customScripts;
     public ILiteCollection<WriteUp> WriteUps => _writeUps;
     public ILiteCollection<PersistenceModels.Media.Media> Media => _media;
+    public ILiteCollection<Project> Projects => _projects;
 
     private static void ConfigureBsonMapper()
     {
@@ -66,6 +76,8 @@ public sealed class CtfDeckDbContext : IDisposable
             BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
             BsonMapper.Global.Entity<WriteUp>().Id(x => x.Id);
             BsonMapper.Global.Entity<PersistenceModels.Media.Media>().Id(x => x.Id);
+            BsonMapper.Global.Entity<Project>().Id(x => x.Id);
+            BsonMapper.Global.Entity<ProjectFolder>().Id(x => x.Id);
 
             _mapperConfigured = true;
         }
