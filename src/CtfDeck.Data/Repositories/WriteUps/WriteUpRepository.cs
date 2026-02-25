@@ -79,10 +79,49 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
+    public List<WriteUpMetadataDto> GetByFolderId(Guid folderId)
+    {
+        lock (_lock)
+        {
+            return _context.WriteUps
+                .Find(w => w.FolderId == folderId)
+                .Select(ToMetadataDto)
+                .ToList();
+        }
+    }
+
+    public bool SetFolderId(Guid writeUpId, Guid? folderId)
+    {
+        lock (_lock)
+        {
+            var model = _context.WriteUps.FindById(writeUpId);
+            if (model == null) return false;
+
+            model.FolderId = folderId;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.WriteUps.Update(model);
+        }
+    }
+
+    public void ClearFolderId(Guid folderId)
+    {
+        lock (_lock)
+        {
+            var writeUps = _context.WriteUps.Find(w => w.FolderId == folderId).ToList();
+            foreach (var writeUp in writeUps)
+            {
+                writeUp.FolderId = null;
+                _context.WriteUps.Update(writeUp);
+            }
+        }
+    }
+
     private static WriteUpDto ToDto(WriteUp m) => new()
     {
         Id = m.Id,
         SessionId = m.SessionId,
+        FolderId = m.FolderId,
         Name = m.Name ?? "",
         Content = m.Content ?? "",
         CreatedAt = m.CreatedAt,
@@ -93,6 +132,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
     {
         Id = m.Id,
         SessionId = m.SessionId,
+        FolderId = m.FolderId,
         Name = m.Name ?? "",
         CreatedAt = m.CreatedAt,
         UpdatedAt = m.UpdatedAt

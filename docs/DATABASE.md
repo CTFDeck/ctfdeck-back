@@ -1,4 +1,4 @@
-# Database Schema - Session Management
+# Database Schema
 
 ## Overview
 
@@ -21,6 +21,7 @@ Main collection storing all session documents.
 |-------|------|--------|
 | `_id` (Id) | GUID | Yes |
 | `Name` | String | No |
+| `ProjectId` | GUID | No |
 
 ### `customscripts`
 
@@ -40,6 +41,7 @@ Collection storing CTF write-ups (reports). Each write-up is linked to a session
 |-------|------|--------|
 | `_id` (Id) | GUID | Yes |
 | `SessionId` | GUID | No |
+| `FolderId` | GUID | No |
 
 ### `media`
 
@@ -50,6 +52,16 @@ Collection storing binary blobs (images, videos, PDFs, etc.) that can be referen
 |-------|------|--------|
 | `_id` (Id) | GUID | Yes |
 | `FileName` | String | No |
+
+### `projects`
+
+Collection storing CTF projects. Projects group sessions and write-up folders. Folders are embedded in the project document.
+
+**Indexes:**
+| Field | Type | Unique |
+|-------|------|--------|
+| `_id` (Id) | GUID | Yes |
+| `Name` | String | No |
 
 ---
 
@@ -66,6 +78,7 @@ Root document representing a CTF session.
   "Description": "string",
   "CreatedAt": "DateTime (UTC)",
   "UpdatedAt": "DateTime (UTC)",
+  "ProjectId": "GUID | null",
   "History": [HistoryEntry],
   "Targets": [SessionTarget]
 }
@@ -78,6 +91,7 @@ Root document representing a CTF session.
 | `Description` | `string` | Session description (default empty) |
 | `CreatedAt` | `DateTime` | Creation timestamp (UTC) |
 | `UpdatedAt` | `DateTime` | Last modification timestamp (UTC) |
+| `ProjectId` | `Guid?` | FK to Project (nullable, null = unlinked) |
 | `History` | `List<HistoryEntry>` | Embedded array of command history |
 | `Targets` | `List<SessionTarget>` | Embedded array of targets |
 
@@ -258,6 +272,7 @@ Root document representing a CTF write-up (report).
 {
   "_id": "GUID",
   "SessionId": "GUID",
+  "FolderId": "GUID | null",
   "Name": "string",
   "Content": "string (markdown)",
   "CreatedAt": "DateTime (UTC)",
@@ -269,6 +284,7 @@ Root document representing a CTF write-up (report).
 |-------|------|-------------|
 | `_id` | `Guid` | Primary key, auto-generated |
 | `SessionId` | `Guid` | Foreign key to Session (mandatory) |
+| `FolderId` | `Guid?` | FK to ProjectFolder (nullable, null = unlinked) |
 | `Name` | `string` | Write-up title |
 | `Content` | `string` | Markdown body (default empty) |
 | `CreatedAt` | `DateTime` | Creation timestamp (UTC) |
@@ -321,6 +337,78 @@ Root document representing a binary blob (image, video, PDF, etc.).
 }
 ```
 
+### Project
+
+Root document representing a CTF project. Groups sessions and write-up folders.
+
+```json
+{
+  "_id": "GUID",
+  "Name": "string",
+  "Description": "string",
+  "CreatedAt": "DateTime (UTC)",
+  "UpdatedAt": "DateTime (UTC)",
+  "Folders": [ProjectFolder]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | `Guid` | Primary key, auto-generated |
+| `Name` | `string` | Project display name |
+| `Description` | `string` | Project description (default empty) |
+| `CreatedAt` | `DateTime` | Creation timestamp (UTC) |
+| `UpdatedAt` | `DateTime` | Last modification timestamp (UTC) |
+| `Folders` | `List<ProjectFolder>` | Embedded array of folders |
+
+---
+
+### ProjectFolder (Embedded)
+
+Represents a folder within a project for organizing write-ups.
+
+```json
+{
+  "_id": "GUID",
+  "Name": "string",
+  "IsSystem": "bool"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | `Guid` | Unique identifier |
+| `Name` | `string` | Folder display name |
+| `IsSystem` | `bool` | `true` for auto-created folders (e.g., "Report") — cannot be deleted or renamed |
+
+**Notes:**
+- A "Report" folder with `IsSystem = true` is automatically created when a project is created.
+- System folders are protected from deletion and renaming.
+
+### Project Example
+
+```json
+{
+  "_id": { "$guid": "000e1176-1ce1-4aca-8cd4-190194e6ffb2" },
+  "Name": "HTB Season 2",
+  "Description": "HackTheBox machines for season 2",
+  "CreatedAt": { "$date": "2024-03-01T09:00:00Z" },
+  "UpdatedAt": { "$date": "2024-03-01T09:00:00Z" },
+  "Folders": [
+    {
+      "_id": { "$guid": "2f7dc82b-9de2-4ba4-b7c1-c1bb763cb50b" },
+      "Name": "Report",
+      "IsSystem": true
+    },
+    {
+      "_id": { "$guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+      "Name": "Exploits",
+      "IsSystem": false
+    }
+  ]
+}
+```
+
 ---
 
 ## Configuration
@@ -336,13 +424,15 @@ BsonMapper.Global.Entity<SessionTarget>().Id(x => x.Id);
 BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
 BsonMapper.Global.Entity<WriteUp>().Id(x => x.Id);
 BsonMapper.Global.Entity<Media>().Id(x => x.Id);
+BsonMapper.Global.Entity<Project>().Id(x => x.Id);
+BsonMapper.Global.Entity<ProjectFolder>().Id(x => x.Id);
 ```
 
 ### Connection Strings
 
 | Mode | Connection String |
 |------|------------------|
-| Production | `Filename=ctfdeck_sessions.db` |
+| Production | `Filename=ctfdeck.db` |
 | In-Memory | `Filename=:memory:;Mode=Memory;Cache=Shared` |
 
 ---
@@ -380,6 +470,11 @@ Frontend (Electron/Angular)
          │                              │
          │                              ▼
          │                       MediaRepository
+         │                              │
+         ├── Project Commands ──► ProjectService
+         │                              │
+         │                              ▼
+         │                     ProjectRepository
          │                              │
          └──────────────────────────────┤
                                         ▼
@@ -423,3 +518,6 @@ Frontend (Electron/Angular)
 | Script Service | `src/CtfDeck.Terminal/Features/Scripts/CustomScriptService.cs` |
 | WriteUp Service | `src/CtfDeck.Terminal/Features/WriteUps/WriteUpService.cs` |
 | Media Service | `src/CtfDeck.Terminal/Features/Media/MediaService.cs` |
+| Project Persistence Model | `src/CtfDeck.Data/PersistenceModels/Projects/` |
+| Project Repository | `src/CtfDeck.Data/Repositories/Projects/ProjectRepository.cs` |
+| Project Service | `src/CtfDeck.Terminal/Features/Projects/ProjectService.cs` |

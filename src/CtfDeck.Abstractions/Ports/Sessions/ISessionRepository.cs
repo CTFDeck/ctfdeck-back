@@ -16,4 +16,8 @@ public interface ISessionRepository
     SessionTargetDto? AddTarget(Guid sessionId, SessionTargetDto target);
     bool DeleteTarget(Guid sessionId, Guid targetId);
     bool UpdateTarget(Guid sessionId, SessionTargetDto target);
+
+    IEnumerable<SessionMetadataDto> GetByProjectId(Guid projectId);
+    bool SetProjectId(Guid sessionId, Guid? projectId);
+    void ClearProjectId(Guid projectId);
 }

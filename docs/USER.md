@@ -50,18 +50,18 @@ dotnet build
 
 ### Running the server
 
-The main application is located in `src/CtfDeck.Terminal/`.
+The main application is located in `src/CtfDeck.ServerWs/`.
 
 #### Using the .NET CLI
 
 From the root directory:
 ```bash
-dotnet run --project src/CtfDeck.Terminal/
+dotnet run --project src/CtfDeck.ServerWs/
 ```
 
 #### Using Visual Studio
 1. Open `CtfDeck.sln`.
-2. Set `CtfDeck.Terminal` as the startup project.
+2. Set `CtfDeck.ServerWs` as the startup project.
 3. Press `F5` to start.
 
 The server will start and listen for WebSocket connections on port `42712` by default.

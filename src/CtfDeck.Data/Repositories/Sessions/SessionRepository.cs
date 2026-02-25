@@ -58,7 +58,8 @@ public sealed class SessionRepository : ISessionRepository
                     CreatedAt = s.CreatedAt,
                     UpdatedAt = s.UpdatedAt,
                     HistoryCount = s.History?.Count ?? 0,
-                    TargetCount = s.Targets?.Count ?? 0
+                    TargetCount = s.Targets?.Count ?? 0,
+                    ProjectId = s.ProjectId
                 })
                 .ToList();
         }
@@ -184,6 +185,54 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
+    public IEnumerable<SessionMetadataDto> GetByProjectId(Guid projectId)
+    {
+        lock (_lock)
+        {
+            return _context.Sessions
+                .Find(s => s.ProjectId == projectId)
+                .Select(s => new SessionMetadataDto
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    Description = s.Description,
+                    CreatedAt = s.CreatedAt,
+                    UpdatedAt = s.UpdatedAt,
+                    HistoryCount = s.History?.Count ?? 0,
+                    TargetCount = s.Targets?.Count ?? 0,
+                    ProjectId = s.ProjectId
+                })
+                .ToList();
+        }
+    }
+
+    public bool SetProjectId(Guid sessionId, Guid? projectId)
+    {
+        lock (_lock)
+        {
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return false;
+
+            model.ProjectId = projectId;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.Sessions.Update(model);
+        }
+    }
+
+    public void ClearProjectId(Guid projectId)
+    {
+        lock (_lock)
+        {
+            var sessions = _context.Sessions.Find(s => s.ProjectId == projectId).ToList();
+            foreach (var session in sessions)
+            {
+                session.ProjectId = null;
+                _context.Sessions.Update(session);
+            }
+        }
+    }
+
     private static SessionDto ToDto(Session s) => new()
     {
         Id = s.Id,
@@ -191,6 +240,7 @@ public sealed class SessionRepository : ISessionRepository
         Description = s.Description,
         CreatedAt = s.CreatedAt,
         UpdatedAt = s.UpdatedAt,
+        ProjectId = s.ProjectId,
         History = (s.History ?? new List<HistoryEntry>()).Select(h => new HistoryEntryDto
         {
             Id = h.Id,

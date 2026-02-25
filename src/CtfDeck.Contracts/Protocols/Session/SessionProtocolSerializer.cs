@@ -82,6 +82,7 @@ public static class SessionProtocolSerializer
         writer.WriteString(session.Description ?? string.Empty);
         writer.WriteInt64(session.CreatedAt.Ticks);
         writer.WriteInt64(session.UpdatedAt.Ticks);
+        writer.WriteGuid(session.ProjectId ?? Guid.Empty);
 
         writer.WriteInt32(session.History.Count);
         foreach (var entry in session.History)
@@ -125,5 +126,6 @@ public static class SessionProtocolSerializer
         writer.WriteInt64(meta.UpdatedAt.Ticks);
         writer.WriteInt32(meta.HistoryCount);
         writer.WriteInt32(meta.TargetCount);
+        writer.WriteGuid(meta.ProjectId ?? Guid.Empty);
     }
 }

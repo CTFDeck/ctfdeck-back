@@ -5,6 +5,7 @@ using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
 using CtfDeck.Abstractions.Ports.WriteUps;
 using CtfDeck.Abstractions.Ports.Media;
+using CtfDeck.Abstractions.Ports.Projects;
 
 using CtfDeck.Contracts.Transport;
 
@@ -13,11 +14,13 @@ using CtfDeck.Data.Repositories.Sessions;
 using CtfDeck.Data.Repositories.Scripts;
 using CtfDeck.Data.Repositories.WriteUps;
 using CtfDeck.Data.Repositories.Media;
+using CtfDeck.Data.Repositories.Projects;
 
 using CtfDeck.Terminal.Features.Sessions;
 using CtfDeck.Terminal.Features.Scripts;
 using CtfDeck.Terminal.Features.WriteUps;
 using CtfDeck.Terminal.Features.Media;
+using CtfDeck.Terminal.Features.Projects;
 using CtfDeck.Terminal.Handlers;
 
 namespace CtfDeck.ServerWs.WebSocket;
@@ -57,6 +60,7 @@ public class WebSocketServer
         ICustomScriptRepository customScriptRepository = new CustomScriptRepository(_dbContext);
         IWriteUpRepository writeUpRepository = new WriteUpRepository(_dbContext);
         IMediaRepository mediaRepository = new MediaRepository(_dbContext);
+        IProjectRepository projectRepository = new ProjectRepository(_dbContext);
 
         // Services / handlers
         var sessionService = new SessionService(sessionRepository);
@@ -66,13 +70,15 @@ public class WebSocketServer
         var customScriptService = new CustomScriptService(customScriptRepository);
         var writeUpService = new WriteUpService(writeUpRepository);
         var mediaService = new MediaService(mediaRepository);
+        var projectService = new ProjectService(projectRepository, sessionRepository, writeUpRepository);
 
         _messageHandlers =
         [
             new SessionMessageHandler(sessionService, _activeSessionManager),
             new CustomScriptMessageHandler(customScriptService),
             new WriteUpMessageHandler(writeUpService),
-            new MediaMessageHandler(mediaService)
+            new MediaMessageHandler(mediaService),
+            new ProjectMessageHandler(projectService)
         ];
     }
 
