@@ -32,7 +32,8 @@ Business logic layer. Handles terminal execution, features, and message handlers
 - **`Features/Scripts/`**: Custom script CRUD wrapper.
 - **`Features/WriteUps/`**: Write-up CRUD service.
 - **`Features/Media/`**: Media CRUD service.
-- **`Handlers/`**: Message handler pipeline (`SessionMessageHandler`, `CustomScriptMessageHandler`, `WriteUpMessageHandler`, `MediaMessageHandler`).
+- **`Features/Projects/`**: Project CRUD, folder management, session assignment, write-up folder assignment.
+- **`Handlers/`**: Message handler pipeline (`SessionMessageHandler`, `CustomScriptMessageHandler`, `WriteUpMessageHandler`, `MediaMessageHandler`, `ProjectMessageHandler`).
 
 ### CtfDeck.Contracts
 
@@ -43,10 +44,12 @@ Binary protocol, DTOs, and protocol serializers/deserializers.
 - **`Models/Scripts/`**: CustomScript DTOs.
 - **`Models/WriteUps/`**: WriteUp DTOs (`WriteUpDto`, `WriteUpMetadataDto`).
 - **`Models/Media/`**: Media DTOs (`MediaDto`, `MediaMetadataDto`).
+- **`Models/Projects/`**: Project DTOs (`ProjectDto`, `ProjectMetadataDto`, `ProjectFolderDto`).
 - **`Protocols/Session/`**: Session protocol serializer/deserializer.
 - **`Protocols/CustomScript/`**: Custom script protocol serializer/deserializer.
 - **`Protocols/WriteUp/`**: Write-up protocol serializer/deserializer.
 - **`Protocols/Media/`**: Media protocol serializer/deserializer.
+- **`Protocols/Project/`**: Project protocol serializer/deserializer.
 
 ### CtfDeck.Abstractions
 
@@ -56,17 +59,19 @@ Port interfaces (hexagonal architecture).
 - **`Ports/Scripts/ICustomScriptRepository.cs`**
 - **`Ports/WriteUps/IWriteUpRepository.cs`**
 - **`Ports/Media/IMediaRepository.cs`**
+- **`Ports/Projects/IProjectRepository.cs`**
 
 ### CtfDeck.Data
 
 LiteDB persistence layer (adapter).
 
-- **`Db/CtfDeckDbContext.cs`**: LiteDB setup. Collections: `sessions`, `customscripts`, `writeups`, `media`.
-- **`PersistenceModels/`**: Persistence models for Sessions, Scripts, WriteUps, Media.
+- **`Db/CtfDeckDbContext.cs`**: LiteDB setup. Collections: `sessions`, `customscripts`, `writeups`, `media`, `projects`.
+- **`PersistenceModels/`**: Persistence models for Sessions, Scripts, WriteUps, Media, Projects.
 - **`Repositories/Sessions/`**: Implements `ISessionRepository`.
 - **`Repositories/Scripts/`**: Implements `ICustomScriptRepository`.
 - **`Repositories/WriteUps/`**: Implements `IWriteUpRepository`.
 - **`Repositories/Media/`**: Implements `IMediaRepository`.
+- **`Repositories/Projects/`**: Implements `IProjectRepository`.
 
 ---
 
@@ -77,6 +82,7 @@ LiteDB persistence layer (adapter).
   - **`WebSocket/`**: Tests for the binary protocol, connection handling, and integration.
   - **`WriteUp/`**: Tests for write-up protocol serialization/deserialization round-trips.
   - **`Media/`**: Tests for media protocol serialization/deserialization round-trips.
+  - **`Project/`**: Tests for project protocol serialization/deserialization round-trips.
 
 ---
 

@@ -93,6 +93,7 @@ The test suite covers all protocol layers and terminal functionality:
 | `WebSocket/` | `BinaryProtocolTests.cs`, `OutputBatcherTests.cs`, `WebSocketServerTests.cs`, `WebSocketIntegrationTests.cs` | Binary protocol round-trips, batching, server lifecycle, real WebSocket connections |
 | `WriteUp/` | `WriteUpProtocolTests.cs` | Write-up protocol serialize/deserialize round-trips, unicode content, message type range |
 | `Media/` | `MediaProtocolTests.cs` | Media protocol serialize/deserialize round-trips, large binary data, message type range |
+| `Project/` | `ProjectProtocolTests.cs` | Project protocol serialize/deserialize round-trips, folder operations, message type range |
 
 ## Continuous Integration
 

@@ -109,11 +109,13 @@ All message types (1-byte prefix):
 | WriteUpDelete | 52 | Client → Server | Delete a write-up |
 | WriteUpList | 53 | Client → Server | List write-ups for a session |
 | WriteUpLoad | 54 | Client → Server | Load full write-up data |
+| WriteUpMove | 55 | Client → Server | Move write-up to a folder |
 | WriteUpCreateResult | 60 | Server → Client | Response to WriteUpCreate |
 | WriteUpUpdateResult | 61 | Server → Client | Response to WriteUpUpdate |
 | WriteUpDeleteResult | 62 | Server → Client | Response to WriteUpDelete |
 | WriteUpListResult | 63 | Server → Client | Response to WriteUpList |
 | WriteUpLoadResult | 64 | Server → Client | Response to WriteUpLoad |
+| WriteUpMoveResult | 65 | Server → Client | Response to WriteUpMove |
 | WriteUpOperationError | 69 | Server → Client | Write-up error response |
 | MediaUpload | 70 | Client → Server | Upload a media file |
 | MediaLoad | 71 | Client → Server | Load a media entry (with blob) |
@@ -124,6 +126,29 @@ All message types (1-byte prefix):
 | MediaDeleteResult | 82 | Server → Client | Response to MediaDelete |
 | MediaListResult | 83 | Server → Client | Response to MediaList |
 | MediaOperationError | 89 | Server → Client | Media error response |
+| ProjectCreate | 90 | Client → Server | Create a new project |
+| ProjectLoad | 91 | Client → Server | Load full project data |
+| ProjectList | 92 | Client → Server | List all projects (metadata) |
+| ProjectUpdate | 93 | Client → Server | Update project |
+| ProjectDelete | 94 | Client → Server | Delete a project |
+| ProjectAddFolder | 95 | Client → Server | Add folder to project |
+| ProjectDeleteFolder | 96 | Client → Server | Delete folder from project |
+| ProjectRenameFolder | 97 | Client → Server | Rename folder |
+| ProjectAssignSession | 98 | Client → Server | Assign session to project |
+| ProjectCreateResult | 100 | Server → Client | Response to ProjectCreate |
+| ProjectLoadResult | 101 | Server → Client | Response to ProjectLoad |
+| ProjectListResult | 102 | Server → Client | Response to ProjectList |
+| ProjectUpdateResult | 103 | Server → Client | Response to ProjectUpdate |
+| ProjectDeleteResult | 104 | Server → Client | Response to ProjectDelete |
+| ProjectAddFolderResult | 105 | Server → Client | Response to ProjectAddFolder |
+| ProjectDeleteFolderResult | 106 | Server → Client | Response to ProjectDeleteFolder |
+| ProjectRenameFolderResult | 107 | Server → Client | Response to ProjectRenameFolder |
+| ProjectAssignSessionResult | 108 | Server → Client | Response to ProjectAssignSession |
+| ProjectOperationError | 109 | Server → Client | Project error response |
+| ProjectListSessions | 110 | Client → Server | List sessions for a project |
+| ProjectListSessionsResult | 111 | Server → Client | Response to ProjectListSessions |
+| ProjectListWriteUps | 112 | Client → Server | List write-ups for a folder |
+| ProjectListWriteUpsResult | 113 | Server → Client | Response to ProjectListWriteUps |
 
 ## Error Codes
 
@@ -598,8 +623,9 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 24+N   | D    | bytes[]   | Description (UTF-8)
 24+N+D | 8    | int64     | CreatedAt (.NET ticks)
 32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
-40+N+D | 4    | int32     | History count (H)
-44+N+D | ...  | Entry[]   | History entries
+40+N+D | 16   | bytes[16] | Project ID (UUID, Guid.Empty = no project)
+56+N+D | 4    | int32     | History count (H)
+60+N+D | ...  | Entry[]   | History entries
 ...    | 4    | int32     | Target count (T)
 ...    | ...  | Target[]  | Targets
 ```
@@ -639,6 +665,7 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
 40+N+D | 4    | int32     | History count
 44+N+D | 4    | int32     | Target count
+48+N+D | 16   | bytes[16] | Project ID (UUID, Guid.Empty = no project)
 ```
 
 #### SessionDeleteResult
@@ -939,6 +966,8 @@ The Write-Up Protocol extends the base protocol to support CTF write-ups (report
 | WriteUpDeleteResult | 62 | Server → Client | Response to WriteUpDelete |
 | WriteUpListResult | 63 | Server → Client | Response to WriteUpList |
 | WriteUpLoadResult | 64 | Server → Client | Response to WriteUpLoad |
+| WriteUpMove | 55 | Client → Server | Move write-up to a folder |
+| WriteUpMoveResult | 65 | Server → Client | Response to WriteUpMove |
 | WriteUpOperationError | 69 | Server → Client | Error response |
 
 ### Request Message Formats
@@ -989,6 +1018,17 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 17     | 16   | bytes[16] | Write-up ID (UUID)
 ```
 
+#### WriteUpMove
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (55)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Write-up ID (UUID)
+33     | 16   | bytes[16] | Folder ID (UUID, Guid.Empty to unlink)
+```
+
+**Note:** This message is routed through the Project message handler, not the WriteUp handler.
+
 ### Response Message Formats
 
 #### WriteUpCreateResult
@@ -1030,10 +1070,11 @@ OFFSET | SIZE | TYPE        | DESCRIPTION
 OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 16   | bytes[16] | Write-up ID (UUID)
 16     | 16   | bytes[16] | Session ID (UUID)
-32     | 4    | int32     | Name length (N)
-36     | N    | bytes[]   | Name (UTF-8)
-36+N   | 8    | int64     | CreatedAt (.NET ticks)
-44+N   | 8    | int64     | UpdatedAt (.NET ticks)
+32     | 16   | bytes[16] | Folder ID (UUID, Guid.Empty = no folder)
+48     | 4    | int32     | Name length (N)
+52     | N    | bytes[]   | Name (UTF-8)
+52+N   | 8    | int64     | CreatedAt (.NET ticks)
+60+N   | 8    | int64     | UpdatedAt (.NET ticks)
 ```
 
 #### WriteUpLoadResult
@@ -1050,12 +1091,21 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 16   | bytes[16] | Write-up ID (UUID)
 16     | 16   | bytes[16] | Session ID (UUID)
-32     | 4    | int32     | Name length (N)
-36     | N    | bytes[]   | Name (UTF-8)
-36+N   | 4    | int32     | Content length (C)
-40+N   | C    | bytes[]   | Markdown content (UTF-8)
-40+N+C | 8    | int64     | CreatedAt (.NET ticks)
-48+N+C | 8    | int64     | UpdatedAt (.NET ticks)
+32     | 16   | bytes[16] | Folder ID (UUID, Guid.Empty = no folder)
+48     | 4    | int32     | Name length (N)
+52     | N    | bytes[]   | Name (UTF-8)
+52+N   | 4    | int32     | Content length (C)
+56+N   | C    | bytes[]   | Markdown content (UTF-8)
+56+N+C | 8    | int64     | CreatedAt (.NET ticks)
+64+N+C | 8    | int64     | UpdatedAt (.NET ticks)
+```
+
+#### WriteUpMoveResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (65)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
 ```
 
 #### WriteUpOperationError
@@ -1251,4 +1301,329 @@ Media entries are persisted using LiteDB:
 |-------|-------|------------|
 | File exceeds maximum upload size | Upload data > 8 MB | Reduce file size before uploading |
 | Media not found | Invalid media ID on load/delete | Use MediaList to get valid IDs |
+| Database locked | Concurrent access | Retry operation |
+
+---
+
+## Project Management Protocol
+
+### Overview
+
+The Project Management Protocol extends the base protocol to support organizing CTF work into projects. A Project groups sessions and write-up folders. Each project automatically gets a "Report" system folder on creation. Sessions link to projects via `ProjectId` and write-ups can be moved between folders via `FolderId`.
+
+**Key Features:**
+- Full CRUD for projects
+- Embedded folder management (add, delete, rename)
+- System folders (e.g., "Report") that cannot be deleted or renamed
+- Session-to-project assignment
+- Write-up-to-folder assignment
+- Content listing (sessions by project, write-ups by folder)
+- LiteDB persistence on server side
+
+### Message Types
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| ProjectCreate | 90 | Client → Server | Create a new project |
+| ProjectLoad | 91 | Client → Server | Load full project data |
+| ProjectList | 92 | Client → Server | List all projects (metadata) |
+| ProjectUpdate | 93 | Client → Server | Update project name and description |
+| ProjectDelete | 94 | Client → Server | Delete a project |
+| ProjectAddFolder | 95 | Client → Server | Add a folder to a project |
+| ProjectDeleteFolder | 96 | Client → Server | Delete a folder from a project |
+| ProjectRenameFolder | 97 | Client → Server | Rename a folder |
+| ProjectAssignSession | 98 | Client → Server | Assign/unlink a session to/from a project |
+| ProjectCreateResult | 100 | Server → Client | Response to ProjectCreate |
+| ProjectLoadResult | 101 | Server → Client | Response to ProjectLoad |
+| ProjectListResult | 102 | Server → Client | Response to ProjectList |
+| ProjectUpdateResult | 103 | Server → Client | Response to ProjectUpdate |
+| ProjectDeleteResult | 104 | Server → Client | Response to ProjectDelete |
+| ProjectAddFolderResult | 105 | Server → Client | Response to ProjectAddFolder |
+| ProjectDeleteFolderResult | 106 | Server → Client | Response to ProjectDeleteFolder |
+| ProjectRenameFolderResult | 107 | Server → Client | Response to ProjectRenameFolder |
+| ProjectAssignSessionResult | 108 | Server → Client | Response to ProjectAssignSession |
+| ProjectOperationError | 109 | Server → Client | Error response |
+| ProjectListSessions | 110 | Client → Server | List sessions for a project |
+| ProjectListSessionsResult | 111 | Server → Client | Response to ProjectListSessions |
+| ProjectListWriteUps | 112 | Client → Server | List write-ups for a folder |
+| ProjectListWriteUpsResult | 113 | Server → Client | Response to ProjectListWriteUps |
+
+### Request Message Formats
+
+#### ProjectCreate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (90)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Name length (N)
+21     | N    | bytes[]   | Project name (UTF-8)
+21+N   | 4    | int32     | Description length (D)
+25+N   | D    | bytes[]   | Description (UTF-8)
+```
+
+#### ProjectLoad
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (91)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+```
+
+#### ProjectList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (92)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+#### ProjectUpdate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (93)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Project name (UTF-8)
+37+N   | 4    | int32     | Description length (D)
+41+N   | D    | bytes[]   | Description (UTF-8)
+```
+
+#### ProjectDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (94)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+```
+
+**Notes:**
+- Deleting a project orphans all linked sessions (`ProjectId` → null) and all write-ups in the project's folders (`FolderId` → null).
+
+#### ProjectAddFolder
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (95)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Folder name (UTF-8)
+```
+
+#### ProjectDeleteFolder
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (96)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+33     | 16   | bytes[16] | Folder ID (UUID)
+```
+
+**Notes:**
+- System folders (e.g., "Report") cannot be deleted. The server returns `success = 0`.
+- Deleting a folder orphans all write-ups in that folder (`FolderId` → null).
+
+#### ProjectRenameFolder
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (97)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+33     | 16   | bytes[16] | Folder ID (UUID)
+49     | 4    | int32     | Name length (N)
+53     | N    | bytes[]   | New folder name (UTF-8)
+```
+
+**Notes:**
+- System folders cannot be renamed. The server returns `success = 0`.
+
+#### ProjectAssignSession
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (98)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 16   | bytes[16] | Project ID (UUID, Guid.Empty to unlink)
+```
+
+#### ProjectListSessions
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (110)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+```
+
+#### ProjectListWriteUps
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (112)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Folder ID (UUID)
+```
+
+### Response Message Formats
+
+#### ProjectCreateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (100)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created project ID (UUID)
+```
+
+#### ProjectLoadResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (101)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | ...  | Project   | Project data (if success)
+```
+
+**Project structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Project ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 4    | int32     | Description length (D)
+24+N   | D    | bytes[]   | Description (UTF-8)
+24+N+D | 8    | int64     | CreatedAt (.NET ticks)
+32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
+40+N+D | 4    | int32     | Folder count (F)
+44+N+D | ...  | Folder[]  | Folders
+```
+
+**ProjectFolder structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Folder ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 1    | byte      | IsSystem (1 = system folder, 0 = user folder)
+```
+
+#### ProjectListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (102)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Project count (N)
+21     | ...  | Metadata[]  | Project metadata array
+```
+
+**ProjectMetadata structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Project ID (UUID)
+16     | 4    | int32     | Name length (N)
+20     | N    | bytes[]   | Name (UTF-8)
+20+N   | 4    | int32     | Description length (D)
+24+N   | D    | bytes[]   | Description (UTF-8)
+24+N+D | 8    | int64     | CreatedAt (.NET ticks)
+32+N+D | 8    | int64     | UpdatedAt (.NET ticks)
+40+N+D | 4    | int32     | Folder count
+44+N+D | 4    | int32     | Session count
+```
+
+#### ProjectUpdateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (103)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### ProjectDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (104)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### ProjectAddFolderResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (105)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created folder ID (UUID)
+```
+
+#### ProjectDeleteFolderResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (106)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### ProjectRenameFolderResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (107)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### ProjectAssignSessionResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (108)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### ProjectListSessionsResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (111)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Session count (N)
+21     | ...  | Metadata[]  | SessionMetadata entries (same format as SessionListResult)
+```
+
+#### ProjectListWriteUpsResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (113)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Write-up count (N)
+21     | ...  | Metadata[]  | WriteUpMetadata entries (same format as WriteUpListResult)
+```
+
+#### ProjectOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (109)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Storage
+
+Projects are persisted using LiteDB:
+- **Collection:** `projects`
+- **Indexes:** `Id` (unique), `Name`
+- Folders are embedded in the project document (not a separate collection)
+
+### Design Decisions
+
+- **"Report" folder**: Auto-created on project creation (`IsSystem = true`). Cannot be deleted or renamed.
+- **"Sessions" is virtual**: Sessions link to projects via `ProjectId`, no folder entity needed.
+- **Project delete**: Orphans sessions (`ProjectId` → null) and write-ups in all project folders (`FolderId` → null).
+- **Folder delete**: Orphans write-ups (`FolderId` → null).
+- **Backward compatible**: `ProjectId` and `FolderId` are nullable. Existing LiteDB documents get `null` automatically.
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Project not found | Invalid project ID | Use ProjectList to get valid IDs |
+| Cannot delete system folder | Attempted to delete "Report" | System folders are protected |
+| Cannot rename system folder | Attempted to rename "Report" | System folders are protected |
+| Session not found | Invalid session ID on assign | Use SessionList to get valid IDs |
 | Database locked | Concurrent access | Retry operation |
