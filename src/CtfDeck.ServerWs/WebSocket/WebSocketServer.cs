@@ -3,15 +3,21 @@ using System.Net;
 using System.Net.WebSockets;
 using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
+using CtfDeck.Abstractions.Ports.WriteUps;
+using CtfDeck.Abstractions.Ports.Media;
 
 using CtfDeck.Contracts.Transport;
 
 using CtfDeck.Data.Db;
 using CtfDeck.Data.Repositories.Sessions;
 using CtfDeck.Data.Repositories.Scripts;
+using CtfDeck.Data.Repositories.WriteUps;
+using CtfDeck.Data.Repositories.Media;
 
 using CtfDeck.Terminal.Features.Sessions;
 using CtfDeck.Terminal.Features.Scripts;
+using CtfDeck.Terminal.Features.WriteUps;
+using CtfDeck.Terminal.Features.Media;
 using CtfDeck.Terminal.Handlers;
 
 namespace CtfDeck.ServerWs.WebSocket;
@@ -49,6 +55,8 @@ public class WebSocketServer
         // Repositories (as ports)
         ISessionRepository sessionRepository = new SessionRepository(_dbContext);
         ICustomScriptRepository customScriptRepository = new CustomScriptRepository(_dbContext);
+        IWriteUpRepository writeUpRepository = new WriteUpRepository(_dbContext);
+        IMediaRepository mediaRepository = new MediaRepository(_dbContext);
 
         // Services / handlers
         var sessionService = new SessionService(sessionRepository);
@@ -56,11 +64,15 @@ public class WebSocketServer
         _commandDispatcher = new CommandDispatcher(_activeSessionManager, _cancellationTokenSource.Token);
 
         var customScriptService = new CustomScriptService(customScriptRepository);
+        var writeUpService = new WriteUpService(writeUpRepository);
+        var mediaService = new MediaService(mediaRepository);
 
         _messageHandlers =
         [
             new SessionMessageHandler(sessionService, _activeSessionManager),
-            new CustomScriptMessageHandler(customScriptService)
+            new CustomScriptMessageHandler(customScriptService),
+            new WriteUpMessageHandler(writeUpService),
+            new MediaMessageHandler(mediaService)
         ];
     }
 
@@ -204,7 +216,7 @@ public class WebSocketServer
 
     private async Task HandleClientMessagesAsync(ClientContext ctx)
     {
-        var buffer = new byte[1024 * 64]; // 64KB buffer for session data
+        var buffer = new byte[1024 * 64]; // 64KB receive buffer
         var webSocket = ctx.WebSocket;
         var clientId = ctx.ClientId;
 
@@ -212,24 +224,24 @@ public class WebSocketServer
         {
             while (webSocket.State == WebSocketState.Open && !_cancellationTokenSource.Token.IsCancellationRequested)
             {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancellationTokenSource.Token);
+                var (message, messageType) = await ReceiveFullMessageAsync(webSocket, buffer, _cancellationTokenSource.Token);
 
-                if (result.MessageType == WebSocketMessageType.Close)
+                if (messageType == WebSocketMessageType.Close)
                 {
                     await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
                     break;
                 }
 
-                if (result.MessageType == WebSocketMessageType.Binary)
+                if (messageType == WebSocketMessageType.Binary)
                 {
-                    var messageType = (MessageType)buffer[0];
+                    var protocolType = (MessageType)message.Span[0];
 
-                    switch (messageType)
+                    switch (protocolType)
                     {
                         case MessageType.CommandExecute:
                             {
-                                // Copy buffer before dispatching (buffer is reused by receive loop)
-                                var messageDataCopy = buffer.AsSpan(0, result.Count).ToArray();
+                                // Copy for fire-and-forget dispatch (message may be backed by reusable buffer)
+                                var messageDataCopy = message.ToArray();
                                 var command = WebSocketCommand.Deserialize(messageDataCopy);
                                 var trimmedCommand = command.Command.Trim();
 
@@ -246,14 +258,14 @@ public class WebSocketServer
 
                         case MessageType.CommandKill:
                             {
-                                var killCommandId = new CommandKillReader(buffer.AsSpan(0, result.Count)).CommandId;
+                                var killCommandId = new CommandKillReader(message.Span).CommandId;
                                 await _commandDispatcher.HandleKillAsync(ctx, killCommandId);
                                 break;
                             }
 
                         case MessageType.PasswordProvide:
                             {
-                                var reader = new PasswordProvideReader(buffer.AsSpan(0, result.Count));
+                                var reader = new PasswordProvideReader(message.Span);
                                 var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
 
                                 if (ctx.SudoWaiters.TryRemove(reader.MessageId, out var tcs))
@@ -265,12 +277,11 @@ public class WebSocketServer
 
                         default:
                             {
-                                var messageData = buffer.AsMemory(0, result.Count);
                                 var handled = false;
 
                                 foreach (var handler in _messageHandlers)
                                 {
-                                    if (await handler.TryHandleAsync(clientId, messageData, ctx.Sender.SendAsync, _cancellationTokenSource.Token))
+                                    if (await handler.TryHandleAsync(clientId, message, ctx.Sender.SendAsync, _cancellationTokenSource.Token))
                                     {
                                         handled = true;
                                         break;
@@ -278,7 +289,7 @@ public class WebSocketServer
                                 }
 
                                 if (!handled)
-                                    Console.WriteLine($"Unknown message from client {clientId}: type={buffer[0]}, size={result.Count}");
+                                    Console.WriteLine($"Unknown message from client {clientId}: type={message.Span[0]}, size={message.Length}");
 
                                 break;
                             }
@@ -298,6 +309,36 @@ public class WebSocketServer
         {
             Console.WriteLine($"Error handling messages for client {clientId}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Reads a complete WebSocket message, accumulating frames if fragmented.
+    /// For single-frame messages (vast majority), returns a slice of the shared buffer — zero allocation.
+    /// For multi-frame messages (large media uploads), allocates a new array to hold the full payload.
+    /// </summary>
+    private static async Task<(ReadOnlyMemory<byte> Message, WebSocketMessageType Type)> ReceiveFullMessageAsync(
+        System.Net.WebSockets.WebSocket webSocket, byte[] buffer, CancellationToken ct)
+    {
+        var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+
+        if (result.MessageType == WebSocketMessageType.Close)
+            return (ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Close);
+
+        // Fast path: single frame fits in buffer (>99% of messages)
+        if (result.EndOfMessage)
+            return (new ReadOnlyMemory<byte>(buffer, 0, result.Count), result.MessageType);
+
+        // Slow path: fragmented message — accumulate into a MemoryStream
+        var ms = new MemoryStream(result.Count * 2);
+        ms.Write(buffer, 0, result.Count);
+
+        while (!result.EndOfMessage)
+        {
+            result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            ms.Write(buffer, 0, result.Count);
+        }
+
+        return (ms.GetBuffer().AsMemory(0, (int)ms.Length), result.MessageType);
     }
 
     public bool IsRunning => _isRunning;

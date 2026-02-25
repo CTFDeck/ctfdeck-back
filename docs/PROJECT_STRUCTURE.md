@@ -15,24 +15,68 @@ This document provides an overview of the CTFDeck Backend repository structure, 
 
 The backend is currently consolidated into a main project:
 
-### [CtfDeck.Terminal](file:///home/binosspc/Documents/tek4/Capstone/CTFDeck/ctfdeck-back/src/CtfDeck.Terminal)
+### CtfDeck.ServerWs
 
-This is the core of the backend server. It implements the WebSocket host and coordinates command execution.
+Entry point and WebSocket server. Composition root that wires all dependencies manually (no DI container).
 
-- **`WebSocket/`**: Implementation of the binary WebSocket server and message dispatching.
-- **`Terminal/`**: Logic for interacting with the system shell (cmd, sh, bash) and streaming output.
-- **`Session/`**: Persistence layer using LiteDB to record command history and manage targets.
-- **`Script/`**: Management of custom scripts and command templates.
-- **`Dto/`**: Data Transfer Objects for binary serialization.
+- **`WebSocket/WebSocketServer.cs`**: HTTP→WS upgrade, per-client state, message routing, command dispatch.
+- **`WebSocket/OutputBatcher.cs`**: Channel-based batching (8KB/5ms) for streaming command output.
 - **`Program.cs`**: Entry point of the application.
+
+### CtfDeck.Terminal
+
+Business logic layer. Handles terminal execution, features, and message handlers.
+
+- **`Terminal/`**: Logic for interacting with the system shell (cmd, sh, bash) and streaming output.
+- **`Features/Sessions/`**: Session CRUD, active session tracking, command recording.
+- **`Features/Scripts/`**: Custom script CRUD wrapper.
+- **`Features/WriteUps/`**: Write-up CRUD service.
+- **`Features/Media/`**: Media CRUD service.
+- **`Handlers/`**: Message handler pipeline (`SessionMessageHandler`, `CustomScriptMessageHandler`, `WriteUpMessageHandler`, `MediaMessageHandler`).
+
+### CtfDeck.Contracts
+
+Binary protocol, DTOs, and protocol serializers/deserializers.
+
+- **`Transport/BinaryProtocol.cs`**: `MessageType` enum, wire structs, `PooledBufferWriter`.
+- **`Models/Sessions/`**: Session, HistoryEntry, SessionTarget DTOs.
+- **`Models/Scripts/`**: CustomScript DTOs.
+- **`Models/WriteUps/`**: WriteUp DTOs (`WriteUpDto`, `WriteUpMetadataDto`).
+- **`Models/Media/`**: Media DTOs (`MediaDto`, `MediaMetadataDto`).
+- **`Protocols/Session/`**: Session protocol serializer/deserializer.
+- **`Protocols/CustomScript/`**: Custom script protocol serializer/deserializer.
+- **`Protocols/WriteUp/`**: Write-up protocol serializer/deserializer.
+- **`Protocols/Media/`**: Media protocol serializer/deserializer.
+
+### CtfDeck.Abstractions
+
+Port interfaces (hexagonal architecture).
+
+- **`Ports/Sessions/ISessionRepository.cs`**
+- **`Ports/Scripts/ICustomScriptRepository.cs`**
+- **`Ports/WriteUps/IWriteUpRepository.cs`**
+- **`Ports/Media/IMediaRepository.cs`**
+
+### CtfDeck.Data
+
+LiteDB persistence layer (adapter).
+
+- **`Db/CtfDeckDbContext.cs`**: LiteDB setup. Collections: `sessions`, `customscripts`, `writeups`, `media`.
+- **`PersistenceModels/`**: Persistence models for Sessions, Scripts, WriteUps, Media.
+- **`Repositories/Sessions/`**: Implements `ISessionRepository`.
+- **`Repositories/Scripts/`**: Implements `ICustomScriptRepository`.
+- **`Repositories/WriteUps/`**: Implements `IWriteUpRepository`.
+- **`Repositories/Media/`**: Implements `IMediaRepository`.
 
 ---
 
 ## Tests (`tests/`)
 
-- **[CtfDeck.Tests](file:///home/binosspc/Documents/tek4/Capstone/CTFDeck/ctfdeck-back/tests/CtfDeck.Tests)**: Unit and integration tests for the Terminal project.
+- **CtfDeck.Tests**: Unit and integration tests.
   - **`Terminal/`**: Tests for shell interaction and command parsing.
-  - **`WebSocket/`**: Tests for the binary protocol and connection handling.
+  - **`WebSocket/`**: Tests for the binary protocol, connection handling, and integration.
+  - **`WriteUp/`**: Tests for write-up protocol serialization/deserialization round-trips.
+  - **`Media/`**: Tests for media protocol serialization/deserialization round-trips.
 
 ---
 
@@ -49,4 +93,4 @@ This is the core of the backend server. It implements the WebSocket host and coo
 ## Build and Output
 
 - **`bin/`** and **`obj/`**: Standard .NET build output directories (gitignored).
-- **`ctfdeck_sessions.db`**: LiteDB database file created at runtime to store session data.
+- **`ctfdeck.db`**: LiteDB database file created at runtime to store all data (sessions, scripts, write-ups, media).

@@ -1,6 +1,8 @@
 using LiteDB;
 using CtfDeck.Data.PersistenceModels.Sessions;
 using CtfDeck.Data.PersistenceModels.Scripts;
+using CtfDeck.Data.PersistenceModels.WriteUps;
+using CtfDeck.Data.PersistenceModels.Media;
 
 namespace CtfDeck.Data.Db;
 
@@ -12,6 +14,8 @@ public sealed class CtfDeckDbContext : IDisposable
     private readonly LiteDatabase _database;
     private readonly ILiteCollection<Session> _sessions;
     private readonly ILiteCollection<CustomScript> _customScripts;
+    private readonly ILiteCollection<WriteUp> _writeUps;
+    private readonly ILiteCollection<PersistenceModels.Media.Media> _media;
     private bool _disposed;
 
     public CtfDeckDbContext(string? databasePath = null)
@@ -31,10 +35,20 @@ public sealed class CtfDeckDbContext : IDisposable
 
         _customScripts = _database.GetCollection<CustomScript>("customscripts");
         _customScripts.EnsureIndex(x => x.Id, unique: true);
+
+        _writeUps = _database.GetCollection<WriteUp>("writeups");
+        _writeUps.EnsureIndex(x => x.Id, unique: true);
+        _writeUps.EnsureIndex(x => x.SessionId);
+
+        _media = _database.GetCollection<PersistenceModels.Media.Media>("media");
+        _media.EnsureIndex(x => x.Id, unique: true);
+        _media.EnsureIndex(x => x.FileName);
     }
 
     public ILiteCollection<Session> Sessions => _sessions;
     public ILiteCollection<CustomScript> CustomScripts => _customScripts;
+    public ILiteCollection<WriteUp> WriteUps => _writeUps;
+    public ILiteCollection<PersistenceModels.Media.Media> Media => _media;
 
     private static void ConfigureBsonMapper()
     {
@@ -50,6 +64,8 @@ public sealed class CtfDeckDbContext : IDisposable
             BsonMapper.Global.Entity<HistoryEntry>().Id(x => x.Id);
             BsonMapper.Global.Entity<SessionTarget>().Id(x => x.Id);
             BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
+            BsonMapper.Global.Entity<WriteUp>().Id(x => x.Id);
+            BsonMapper.Global.Entity<PersistenceModels.Media.Media>().Id(x => x.Id);
 
             _mapperConfigured = true;
         }

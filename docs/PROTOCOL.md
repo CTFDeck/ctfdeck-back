@@ -104,6 +104,26 @@ All message types (1-byte prefix):
 | CustomScriptDeleteResult | 42 | Server → Client | Response to CustomScriptDelete |
 | CustomScriptListResult | 43 | Server → Client | Response to CustomScriptList |
 | CustomScriptOperationError | 49 | Server → Client | Custom script error response |
+| WriteUpCreate | 50 | Client → Server | Create a new write-up |
+| WriteUpUpdate | 51 | Client → Server | Update a write-up |
+| WriteUpDelete | 52 | Client → Server | Delete a write-up |
+| WriteUpList | 53 | Client → Server | List write-ups for a session |
+| WriteUpLoad | 54 | Client → Server | Load full write-up data |
+| WriteUpCreateResult | 60 | Server → Client | Response to WriteUpCreate |
+| WriteUpUpdateResult | 61 | Server → Client | Response to WriteUpUpdate |
+| WriteUpDeleteResult | 62 | Server → Client | Response to WriteUpDelete |
+| WriteUpListResult | 63 | Server → Client | Response to WriteUpList |
+| WriteUpLoadResult | 64 | Server → Client | Response to WriteUpLoad |
+| WriteUpOperationError | 69 | Server → Client | Write-up error response |
+| MediaUpload | 70 | Client → Server | Upload a media file |
+| MediaLoad | 71 | Client → Server | Load a media entry (with blob) |
+| MediaDelete | 72 | Client → Server | Delete a media entry |
+| MediaList | 73 | Client → Server | List all media (metadata only) |
+| MediaUploadResult | 80 | Server → Client | Response to MediaUpload |
+| MediaLoadResult | 81 | Server → Client | Response to MediaLoad |
+| MediaDeleteResult | 82 | Server → Client | Response to MediaDelete |
+| MediaListResult | 83 | Server → Client | Response to MediaList |
+| MediaOperationError | 89 | Server → Client | Media error response |
 
 ## Error Codes
 
@@ -888,4 +908,347 @@ Custom scripts are persisted using LiteDB:
 | Error | Cause | Resolution |
 |-------|-------|------------|
 | Script not found | Invalid script ID on update/delete | Use CustomScriptList to get valid IDs |
+| Database locked | Concurrent access | Retry operation |
+
+---
+
+## Write-Up Protocol
+
+### Overview
+
+The Write-Up Protocol extends the base protocol to support CTF write-ups (reports). Write-ups are linked to a session (mandatory `SessionId`), contain a name and markdown content, and support full CRUD operations. Write-ups are stored as separate documents (not embedded in sessions) to allow independent management.
+
+**Key Features:**
+- CRUD operations for write-ups
+- Session-scoped listing (by `SessionId`)
+- Markdown content storage
+- Separate metadata and full-content load paths
+- LiteDB persistence on server side
+
+### Message Types
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| WriteUpCreate | 50 | Client → Server | Create a new write-up |
+| WriteUpUpdate | 51 | Client → Server | Update name and content |
+| WriteUpDelete | 52 | Client → Server | Delete a write-up |
+| WriteUpList | 53 | Client → Server | List write-ups for a session (metadata) |
+| WriteUpLoad | 54 | Client → Server | Load full write-up data |
+| WriteUpCreateResult | 60 | Server → Client | Response to WriteUpCreate |
+| WriteUpUpdateResult | 61 | Server → Client | Response to WriteUpUpdate |
+| WriteUpDeleteResult | 62 | Server → Client | Response to WriteUpDelete |
+| WriteUpListResult | 63 | Server → Client | Response to WriteUpList |
+| WriteUpLoadResult | 64 | Server → Client | Response to WriteUpLoad |
+| WriteUpOperationError | 69 | Server → Client | Error response |
+
+### Request Message Formats
+
+#### WriteUpCreate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (50)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Write-up name (UTF-8)
+```
+
+#### WriteUpUpdate
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (51)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Write-up ID (UUID)
+33     | 4    | int32     | Name length (N)
+37     | N    | bytes[]   | Write-up name (UTF-8)
+37+N   | 4    | int32     | Content length (C)
+41+N   | C    | bytes[]   | Markdown content (UTF-8)
+```
+
+#### WriteUpDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (52)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Write-up ID (UUID)
+```
+
+#### WriteUpList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (53)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Session ID (UUID)
+```
+
+#### WriteUpLoad
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (54)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Write-up ID (UUID)
+```
+
+### Response Message Formats
+
+#### WriteUpCreateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (60)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created write-up ID (UUID)
+```
+
+#### WriteUpUpdateResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (61)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### WriteUpDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (62)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### WriteUpListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (63)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Write-up count (N)
+21     | ...  | Metadata[]  | Write-up metadata array
+```
+
+**WriteUpMetadata structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Write-up ID (UUID)
+16     | 16   | bytes[16] | Session ID (UUID)
+32     | 4    | int32     | Name length (N)
+36     | N    | bytes[]   | Name (UTF-8)
+36+N   | 8    | int64     | CreatedAt (.NET ticks)
+44+N   | 8    | int64     | UpdatedAt (.NET ticks)
+```
+
+#### WriteUpLoadResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (64)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | ...  | WriteUp   | Full write-up data (if success)
+```
+
+**WriteUp structure (when success = 1):**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Write-up ID (UUID)
+16     | 16   | bytes[16] | Session ID (UUID)
+32     | 4    | int32     | Name length (N)
+36     | N    | bytes[]   | Name (UTF-8)
+36+N   | 4    | int32     | Content length (C)
+40+N   | C    | bytes[]   | Markdown content (UTF-8)
+40+N+C | 8    | int64     | CreatedAt (.NET ticks)
+48+N+C | 8    | int64     | UpdatedAt (.NET ticks)
+```
+
+#### WriteUpOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (69)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Storage
+
+Write-ups are persisted using LiteDB:
+- **Collection:** `writeups`
+- **Indexes:** `Id` (unique), `SessionId`
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Write-up not found | Invalid write-up ID on load/update/delete | Use WriteUpList to get valid IDs |
+| Session not found | Invalid session ID on create/list | Use SessionList to get valid session IDs |
+| Database locked | Concurrent access | Retry operation |
+
+---
+
+## Media Protocol
+
+### Overview
+
+The Media Protocol extends the base protocol to support binary blob storage (images, videos, PDFs, etc.). Media entries are stored globally (not tied to a session) and can be referenced from write-up markdown content by their ID. The server enforces an **8 MB per-file upload limit**.
+
+**Key Features:**
+- Upload, load, delete, and list operations
+- Binary blob storage with filename and MIME type metadata
+- 8 MB per-file upload limit (server-enforced)
+- Separate metadata listing (no blob) and full load (with blob) paths
+- Multi-frame WebSocket message support for large uploads
+- LiteDB persistence on server side
+
+### Message Types
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| MediaUpload | 70 | Client → Server | Upload a media file |
+| MediaLoad | 71 | Client → Server | Load a media entry (with blob) |
+| MediaDelete | 72 | Client → Server | Delete a media entry |
+| MediaList | 73 | Client → Server | List all media (metadata only) |
+| MediaUploadResult | 80 | Server → Client | Response to MediaUpload |
+| MediaLoadResult | 81 | Server → Client | Response to MediaLoad |
+| MediaDeleteResult | 82 | Server → Client | Response to MediaDelete |
+| MediaListResult | 83 | Server → Client | Response to MediaList |
+| MediaOperationError | 89 | Server → Client | Error response |
+
+### Request Message Formats
+
+#### MediaUpload
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (70)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | File name length (F)
+21     | F    | bytes[]   | File name (UTF-8)
+21+F   | 4    | int32     | MIME type length (M)
+25+F   | M    | bytes[]   | MIME type (UTF-8)
+25+F+M | 4    | int32     | Data length (D)
+29+F+M | D    | bytes[]   | Binary data
+```
+
+**Notes:**
+- Maximum data length is 8 MB (8,388,608 bytes). The server rejects uploads exceeding this limit.
+- Large uploads may span multiple WebSocket frames. The server accumulates frames until `EndOfMessage` before processing.
+
+#### MediaLoad
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (71)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Media ID (UUID)
+```
+
+#### MediaDelete
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (72)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Media ID (UUID)
+```
+
+#### MediaList
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (73)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+### Response Message Formats
+
+#### MediaUploadResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (80)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Created media ID (UUID)
+```
+
+#### MediaLoadResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (81)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | ...  | Media     | Full media data (if success)
+```
+
+**Media structure (when success = 1):**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Media ID (UUID)
+16     | 4    | int32     | File name length (F)
+20     | F    | bytes[]   | File name (UTF-8)
+20+F   | 4    | int32     | MIME type length (M)
+24+F   | M    | bytes[]   | MIME type (UTF-8)
+24+F+M | 4    | int32     | Data length (D)
+28+F+M | D    | bytes[]   | Binary data
+```
+
+#### MediaDeleteResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (82)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### MediaListResult
+```
+OFFSET | SIZE | TYPE        | DESCRIPTION
+0      | 1    | byte        | Message type (83)
+1      | 16   | bytes[16]   | Message ID (UUID)
+17     | 4    | int32       | Media count (N)
+21     | ...  | Metadata[]  | Media metadata array
+```
+
+**MediaMetadata structure:**
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 16   | bytes[16] | Media ID (UUID)
+16     | 4    | int32     | File name length (F)
+20     | F    | bytes[]   | File name (UTF-8)
+20+F   | 4    | int32     | MIME type length (M)
+24+F   | M    | bytes[]   | MIME type (UTF-8)
+24+F+M | 8    | int64     | CreatedAt (.NET ticks)
+```
+
+#### MediaOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (89)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+### Multi-Frame WebSocket Messages
+
+Media uploads can exceed the WebSocket receive buffer (64 KB). The server handles this transparently:
+
+1. **Single-frame messages** (vast majority): Zero-allocation — returns a slice of the shared receive buffer.
+2. **Multi-frame messages** (large uploads): Accumulates frames into a `MemoryStream` until `EndOfMessage`, then processes the complete payload.
+
+Clients do not need special handling — the WebSocket layer fragments large messages automatically.
+
+### Upload Limits
+
+| Constraint | Value |
+|------------|-------|
+| Max file size per upload | 8 MB (8,388,608 bytes) |
+| Validation | Server-side in `MediaMessageHandler` |
+| Error on exceed | `MediaOperationError` with descriptive message |
+
+### Storage
+
+Media entries are persisted using LiteDB:
+- **Collection:** `media`
+- **Indexes:** `Id` (unique), `FileName`
+
+### Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| File exceeds maximum upload size | Upload data > 8 MB | Reduce file size before uploading |
+| Media not found | Invalid media ID on load/delete | Use MediaList to get valid IDs |
 | Database locked | Concurrent access | Retry operation |
