@@ -7,11 +7,16 @@ public sealed class CommandDispatcher
 {
     private readonly ActiveSessionManager _activeSessionManager;
     private readonly CancellationToken _serverShutdownToken;
+    private readonly Func<string, string> _aliasResolver;
 
-    public CommandDispatcher(ActiveSessionManager activeSessionManager, CancellationToken serverShutdownToken)
+    public CommandDispatcher(
+        ActiveSessionManager activeSessionManager,
+        CancellationToken serverShutdownToken,
+        Func<string, string>? aliasResolver = null)
     {
         _activeSessionManager = activeSessionManager;
         _serverShutdownToken = serverShutdownToken;
+        _aliasResolver = aliasResolver ?? (cmd => cmd);
     }
 
     /// <summary>
@@ -19,9 +24,11 @@ public sealed class CommandDispatcher
     /// </summary>
     public async Task ProcessCdAsync(ClientContext ctx, WebSocketCommand command)
     {
-        Console.WriteLine($"Client {ctx.ClientId} sent command: '{command.Command}' (ID: {command.MessageId})");
+        var resolvedCommand = _aliasResolver(command.Command);
 
-        var result = await ctx.Executor.ExecuteAsync(command.Command);
+        Console.WriteLine($"Client {ctx.ClientId} sent command: '{resolvedCommand}' (ID: {command.MessageId})");
+
+        var result = await ctx.Executor.ExecuteAsync(resolvedCommand);
 
         var response = WebSocketResponse.FromResult(
             result.ExitCode, result.Output, result.Error,
@@ -30,7 +37,7 @@ public sealed class CommandDispatcher
         await ctx.Sender.SendAsync(response.Serialize());
 
         _activeSessionManager.RecordCommand(
-            ctx.ClientId, command.Command, result.Output + result.Error,
+            ctx.ClientId, resolvedCommand, result.Output + result.Error,
             result.ExitCode, result.WorkingDirectory);
     }
 
@@ -42,17 +49,17 @@ public sealed class CommandDispatcher
         var clientId = ctx.ClientId;
         var executor = ctx.Executor;
 
-        Console.WriteLine($"Client {clientId} sent command: '{command.Command}' (ID: {command.MessageId})");
+        var resolvedCommand = _aliasResolver(command.Command);
 
-        // Create a linked CancellationTokenSource for this command
+        Console.WriteLine($"Client {clientId} sent command: '{resolvedCommand}' (ID: {command.MessageId})");
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_serverShutdownToken);
 
-        // Register in active commands for kill support
         ctx.ActiveCommands.TryAdd(command.MessageId, cts);
 
         try
         {
-            var trimmed = command.Command.TrimStart();
+            var trimmed = resolvedCommand.TrimStart();
 
             string? sudoPassword = null;
 
@@ -69,7 +76,7 @@ public sealed class CommandDispatcher
             await using var batcher = new OutputBatcher(ctx.Sender, command.MessageId);
 
             var streamResult = await executor.ExecuteStreamingAsync(
-                command.Command,
+                resolvedCommand,
                 (data, isError) => batcher.EnqueueAsync(data, isError).AsTask(),
                 cts.Token,
                 sudoPassword);
@@ -77,7 +84,7 @@ public sealed class CommandDispatcher
             var accumulatedOutput = await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
 
             _activeSessionManager.RecordCommand(
-                clientId, command.Command, accumulatedOutput,
+                clientId, resolvedCommand, accumulatedOutput,
                 streamResult.ExitCode, executor.CurrentDirectory);
         }
         catch (OperationCanceledException)
@@ -94,7 +101,7 @@ public sealed class CommandDispatcher
             }
 
             _activeSessionManager.RecordCommand(
-                clientId, command.Command, "[killed]", -1, executor.CurrentDirectory);
+                clientId, resolvedCommand, "[killed]", -1, executor.CurrentDirectory);
         }
         catch (Exception ex)
         {

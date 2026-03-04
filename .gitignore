@@ -57,3 +57,4 @@ node_modules/
 coveragereport/*
 global.json
 .DS_Store
+.idea
