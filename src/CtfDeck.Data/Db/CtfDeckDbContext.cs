@@ -54,7 +54,7 @@ public sealed class CtfDeckDbContext : IDisposable
 
         _sessions.EnsureIndex(x => x.ProjectId);
         _writeUps.EnsureIndex(x => x.FolderId);
-        
+
         _aliases = _database.GetCollection<CommandAlias>("aliases");
         _aliases.EnsureIndex(x => x.Id, unique: true);
         _aliases.EnsureIndex(x => x.From);

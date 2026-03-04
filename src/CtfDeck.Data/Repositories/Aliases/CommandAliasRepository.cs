@@ -83,16 +83,24 @@ public sealed class CommandAliasRepository : ICommandAliasRepository
 
     private static CommandAliasDto ToDto(CommandAlias a) => new()
     {
-        Id = a.Id, From = a.From, To = a.To,
-        Os = a.Os, Shell = a.Shell,
-        IsDefault = a.IsDefault, UpdatedAt = a.UpdatedAt
+        Id = a.Id,
+        From = a.From,
+        To = a.To,
+        Os = a.Os,
+        Shell = a.Shell,
+        IsDefault = a.IsDefault,
+        UpdatedAt = a.UpdatedAt
     };
 
     private static CommandAlias FromDto(CommandAliasDto d) => new()
     {
-        Id = d.Id, From = d.From, To = d.To,
-        Os = d.Os, Shell = d.Shell,
-        IsDefault = d.IsDefault, UpdatedAt = d.UpdatedAt
+        Id = d.Id,
+        From = d.From,
+        To = d.To,
+        Os = d.Os,
+        Shell = d.Shell,
+        IsDefault = d.IsDefault,
+        UpdatedAt = d.UpdatedAt
     };
 
     private static IEnumerable<CommandAlias> DefaultAliases()
