@@ -4,7 +4,7 @@ using CtfDeck.Data.PersistenceModels.Scripts;
 using CtfDeck.Data.PersistenceModels.WriteUps;
 using CtfDeck.Data.PersistenceModels.Media;
 using CtfDeck.Data.PersistenceModels.Projects;
-
+using CtfDeck.Data.PersistenceModels.Aliases;
 namespace CtfDeck.Data.Db;
 
 public sealed class CtfDeckDbContext : IDisposable
@@ -16,9 +16,11 @@ public sealed class CtfDeckDbContext : IDisposable
     private readonly ILiteCollection<Session> _sessions;
     private readonly ILiteCollection<CustomScript> _customScripts;
     private readonly ILiteCollection<WriteUp> _writeUps;
-    private readonly ILiteCollection<PersistenceModels.Media.Media> _media;
+    private readonly ILiteCollection<Media> _media;
     private readonly ILiteCollection<Project> _projects;
     private bool _disposed;
+    private readonly ILiteCollection<CommandAlias> _aliases;
+
 
     public CtfDeckDbContext(string? databasePath = null)
     {
@@ -52,13 +54,18 @@ public sealed class CtfDeckDbContext : IDisposable
 
         _sessions.EnsureIndex(x => x.ProjectId);
         _writeUps.EnsureIndex(x => x.FolderId);
+
+        _aliases = _database.GetCollection<CommandAlias>("aliases");
+        _aliases.EnsureIndex(x => x.Id, unique: true);
+        _aliases.EnsureIndex(x => x.From);
     }
 
     public ILiteCollection<Session> Sessions => _sessions;
     public ILiteCollection<CustomScript> CustomScripts => _customScripts;
     public ILiteCollection<WriteUp> WriteUps => _writeUps;
-    public ILiteCollection<PersistenceModels.Media.Media> Media => _media;
+    public ILiteCollection<Media> Media => _media;
     public ILiteCollection<Project> Projects => _projects;
+    public ILiteCollection<CommandAlias> Aliases => _aliases;
 
     private static void ConfigureBsonMapper()
     {
@@ -75,9 +82,10 @@ public sealed class CtfDeckDbContext : IDisposable
             BsonMapper.Global.Entity<SessionTarget>().Id(x => x.Id);
             BsonMapper.Global.Entity<CustomScript>().Id(x => x.Id);
             BsonMapper.Global.Entity<WriteUp>().Id(x => x.Id);
-            BsonMapper.Global.Entity<PersistenceModels.Media.Media>().Id(x => x.Id);
+            BsonMapper.Global.Entity<Media>().Id(x => x.Id);
             BsonMapper.Global.Entity<Project>().Id(x => x.Id);
             BsonMapper.Global.Entity<ProjectFolder>().Id(x => x.Id);
+            BsonMapper.Global.Entity<CommandAlias>().Id(x => x.Id);
 
             _mapperConfigured = true;
         }

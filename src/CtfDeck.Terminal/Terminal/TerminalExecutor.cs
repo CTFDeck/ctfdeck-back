@@ -10,6 +10,8 @@ public delegate Task OutputReceivedHandler(string data, bool isError);
 public sealed class TerminalExecutor : IDisposable
 {
     private readonly DirectoryNavigator _navigator;
+    private readonly Func<string, string> _aliasResolver;
+
     private ShellType _shellType = ShellType.Auto;
     private bool _isDisposed;
 
@@ -17,14 +19,20 @@ public sealed class TerminalExecutor : IDisposable
     public bool IsBashAvailable => ShellDetector.IsBashAvailable;
     public ShellType CurrentShell => ShellDetector.ResolveShellType(_shellType);
 
-    public TerminalExecutor() : this(null) { }
+    public TerminalExecutor() : this(null, null) { }
 
-    public TerminalExecutor(string? initialDirectory)
+    public TerminalExecutor(string? initialDirectory) : this(initialDirectory, null) { }
+
+    public TerminalExecutor(string? initialDirectory, Func<string, string>? aliasResolver)
     {
         _navigator = new DirectoryNavigator(initialDirectory);
+        _aliasResolver = aliasResolver ?? (Func<string, string>)(static cmd => cmd);
     }
 
-    public void SetShell(ShellType shellType) => _shellType = shellType;
+    public void SetShell(ShellType shellType)
+    {
+        _shellType = shellType;
+    }
 
     public Task<CommandResult> ExecuteStreamingAsync(
         string command,
@@ -34,22 +42,41 @@ public sealed class TerminalExecutor : IDisposable
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        return CommandPreprocessor.IsDirectoryChangeCommand(command)
-            ? ExecuteCdAsync(command, onOutput)
-            : ExecuteShellCommandAsync(command, onOutput, cancellationToken, sudoPassword);
+        // Apply command aliasing
+        var resolvedCommand = _aliasResolver(command);
+
+        return CommandPreprocessor.IsDirectoryChangeCommand(resolvedCommand)
+            ? ExecuteCdAsync(resolvedCommand, onOutput)
+            : ExecuteShellCommandAsync(resolvedCommand, onOutput, cancellationToken, sudoPassword);
     }
 
-    public async Task<CommandResult> ExecuteAsync(string command, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        string command,
+        CancellationToken cancellationToken = default)
     {
-        return await ExecuteStreamingAsync(command, static (_, _) => Task.CompletedTask, cancellationToken, null);
+        return await ExecuteStreamingAsync(
+            command,
+            static (_, _) => Task.CompletedTask,
+            cancellationToken,
+            null
+        );
     }
 
-    public string GetPrompt() => _navigator.GetPrompt();
+    public string GetPrompt()
+    {
+        return _navigator.GetPrompt();
+    }
 
-    private async Task<CommandResult> ExecuteCdAsync(string command, OutputReceivedHandler onOutput)
+    private async Task<CommandResult> ExecuteCdAsync(
+        string command,
+        OutputReceivedHandler onOutput)
     {
         var path = CommandPreprocessor.ExtractCdPath(command);
-        return await _navigator.ChangeDirectoryAsync(path, (d, e) => onOutput(d, e));
+
+        return await _navigator.ChangeDirectoryAsync(
+            path,
+            (data, isError) => onOutput(data, isError)
+        );
     }
 
     private static bool IsSudo(string cmd)
@@ -60,13 +87,19 @@ public sealed class TerminalExecutor : IDisposable
 
     private static string PrepareSudo(string cmd)
     {
-        if (!IsSudo(cmd)) return cmd;
+        if (!IsSudo(cmd))
+            return cmd;
 
         var trimmed = cmd.TrimStart();
-        if (trimmed.StartsWith("sudo -S", StringComparison.Ordinal)) return cmd;
+
+        if (trimmed.StartsWith("sudo -S", StringComparison.Ordinal))
+            return cmd;
 
         var idx = cmd.IndexOf("sudo", StringComparison.Ordinal);
-        return idx < 0 ? cmd : cmd[..idx] + "sudo -S -p ''" + cmd[(idx + 4)..];
+
+        return idx < 0
+            ? cmd
+            : cmd[..idx] + "sudo -S -p ''" + cmd[(idx + 4)..];
     }
 
     private async Task<CommandResult> ExecuteShellCommandAsync(
@@ -79,35 +112,48 @@ public sealed class TerminalExecutor : IDisposable
         {
             var shell = ShellDetector.GetConfig(_shellType);
 
-            var finalCmd = (sudoPassword != null && IsSudo(command))
-                ? PrepareSudo(command)
-                : command;
+            var finalCmd =
+                (sudoPassword != null && IsSudo(command))
+                    ? PrepareSudo(command)
+                    : command;
 
-            var prepared = CommandPreprocessor.Prepare(finalCmd, CurrentShell);
+            var preparedCommand =
+                CommandPreprocessor.Prepare(finalCmd, CurrentShell);
 
             return await ProcessRunner.RunAsync(
                 shell,
-                prepared,
+                preparedCommand,
                 _navigator.CurrentDirectory,
-                (d, e) => onOutput(d, e),
-                writeStdin: (sudoPassword != null && IsSudo(command))
-                    ? (sw => sw.WriteLineAsync(sudoPassword))
-                    : null,
+                (data, isError) => onOutput(data, isError),
+                writeStdin:
+                    (sudoPassword != null && IsSudo(command))
+                        ? (sw => sw.WriteLineAsync(sudoPassword))
+                        : null,
                 cancellationToken: cancellationToken
             );
         }
         catch (Exception ex)
         {
-            return CommandResult.Failure(_navigator.CurrentDirectory, $"Execution error: {ex.Message}", -1);
+            return CommandResult.Failure(
+                _navigator.CurrentDirectory,
+                $"Execution error: {ex.Message}",
+                -1
+            );
         }
     }
 
     public void Dispose()
     {
-        if (_isDisposed) return;
+        if (_isDisposed)
+            return;
+
         _isDisposed = true;
+
         GC.SuppressFinalize(this);
     }
 
-    ~TerminalExecutor() => Dispose();
+    ~TerminalExecutor()
+    {
+        Dispose();
+    }
 }

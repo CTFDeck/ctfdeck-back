@@ -1,13 +1,17 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
+
 using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
 using CtfDeck.Abstractions.Ports.WriteUps;
 using CtfDeck.Abstractions.Ports.Media;
 using CtfDeck.Abstractions.Ports.Projects;
+using CtfDeck.Abstractions.Ports.Aliases;
 
 using CtfDeck.Contracts.Transport;
+using CtfDeck.Contracts.Models.Aliases;
 
 using CtfDeck.Data.Db;
 using CtfDeck.Data.Repositories.Sessions;
@@ -15,13 +19,16 @@ using CtfDeck.Data.Repositories.Scripts;
 using CtfDeck.Data.Repositories.WriteUps;
 using CtfDeck.Data.Repositories.Media;
 using CtfDeck.Data.Repositories.Projects;
+using CtfDeck.Data.Repositories.Aliases;
 
 using CtfDeck.Terminal.Features.Sessions;
 using CtfDeck.Terminal.Features.Scripts;
 using CtfDeck.Terminal.Features.WriteUps;
 using CtfDeck.Terminal.Features.Media;
 using CtfDeck.Terminal.Features.Projects;
+using CtfDeck.Terminal.Features.Aliases;
 using CtfDeck.Terminal.Handlers;
+using CtfDeck.Terminal.Terminal.Shell;
 
 namespace CtfDeck.ServerWs.WebSocket;
 
@@ -33,16 +40,15 @@ public class WebSocketServer
     private bool _isRunning;
     private Task? _listenerTask;
 
-    // Data
     private readonly CtfDeckDbContext _dbContext;
 
-    // Session management
     private readonly ActiveSessionManager _activeSessionManager;
 
-    // Command execution
+    private readonly CommandAliasService _commandAliasService;
+    private readonly Func<string, string> _aliasResolver;
+
     private readonly CommandDispatcher _commandDispatcher;
 
-    // Message handlers pipeline
     private readonly List<MessageHandlerBase> _messageHandlers;
 
     public WebSocketServer(string host = "localhost", int port = 8080, bool useInMemoryDb = false)
@@ -51,21 +57,26 @@ public class WebSocketServer
         _httpListener.Prefixes.Add($"http://{host}:{port}/");
         _cancellationTokenSource = new CancellationTokenSource();
 
-        // Initialize DB (use in-memory for tests)
         var dbPath = useInMemoryDb ? ":memory:" : null;
         _dbContext = new CtfDeckDbContext(dbPath);
 
-        // Repositories (as ports)
         ISessionRepository sessionRepository = new SessionRepository(_dbContext);
         ICustomScriptRepository customScriptRepository = new CustomScriptRepository(_dbContext);
         IWriteUpRepository writeUpRepository = new WriteUpRepository(_dbContext);
         IMediaRepository mediaRepository = new MediaRepository(_dbContext);
         IProjectRepository projectRepository = new ProjectRepository(_dbContext);
 
-        // Services / handlers
+        ICommandAliasRepository aliasRepository = new CommandAliasRepository(_dbContext);
+        _commandAliasService = new CommandAliasService(aliasRepository);
+
+        var os = DetectOsKind();
+        var shell = DetectShellKind();
+        _aliasResolver = cmd => _commandAliasService.Apply(cmd, os, shell);
+
         var sessionService = new SessionService(sessionRepository);
         _activeSessionManager = new ActiveSessionManager(sessionService);
-        _commandDispatcher = new CommandDispatcher(_activeSessionManager, _cancellationTokenSource.Token);
+
+        _commandDispatcher = new CommandDispatcher(_activeSessionManager, _cancellationTokenSource.Token, _aliasResolver);
 
         var customScriptService = new CustomScriptService(customScriptRepository);
         var writeUpService = new WriteUpService(writeUpRepository);
@@ -80,6 +91,25 @@ public class WebSocketServer
             new MediaMessageHandler(mediaService),
             new ProjectMessageHandler(projectService)
         ];
+    }
+
+    private static OsKind DetectOsKind()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return OsKind.Windows;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return OsKind.MacOs;
+        return OsKind.Linux;
+    }
+
+    private static ShellKind DetectShellKind()
+    {
+        var resolved = ShellDetector.ResolveShellType(ShellType.Auto);
+
+        return resolved switch
+        {
+            ShellType.Bash => ShellKind.Bash,
+            ShellType.PowerShell => ShellKind.Pwsh,
+            _ => ShellKind.Any
+        };
     }
 
     public async Task StartAsync()
@@ -119,11 +149,9 @@ public class WebSocketServer
 
         if (_listenerTask != null)
         {
-            // Wait for listener to complete gracefully
             await Task.WhenAny(_listenerTask, Task.Delay(2000));
         }
 
-        // Close WebSockets gracefully — race with HandleWebSocketConnectionAsync cleanup
         foreach (var ctx in _clients.Values)
         {
             try
@@ -131,13 +159,15 @@ public class WebSocketServer
                 if (ctx.WebSocket.State == WebSocketState.Open)
                     await ctx.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None);
             }
-            catch (WebSocketException) { /* already aborted by connection handler */ }
+            catch (WebSocketException) { /* ignore */ }
         }
 
         foreach (var ctx in _clients.Values)
             ctx.Dispose();
+
         _clients.Clear();
         _dbContext.Dispose();
+
         Console.WriteLine("WebSocket server stopped successfully.");
     }
 
@@ -222,7 +252,7 @@ public class WebSocketServer
 
     private async Task HandleClientMessagesAsync(ClientContext ctx)
     {
-        var buffer = new byte[1024 * 64]; // 64KB receive buffer
+        var buffer = new byte[1024 * 64];
         var webSocket = ctx.WebSocket;
         var clientId = ctx.ClientId;
 
@@ -246,7 +276,6 @@ public class WebSocketServer
                     {
                         case MessageType.CommandExecute:
                             {
-                                // Copy for fire-and-forget dispatch (message may be backed by reusable buffer)
                                 var messageDataCopy = message.ToArray();
                                 var command = WebSocketCommand.Deserialize(messageDataCopy);
                                 var trimmedCommand = command.Command.Trim();
