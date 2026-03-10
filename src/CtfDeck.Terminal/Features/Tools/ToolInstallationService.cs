@@ -36,6 +36,7 @@ public class ToolInstallationService : IToolInstaller
             });
 
             var installDirectory = _toolPathResolver.GetToolInstallDirectory(tool.Id);
+            var binDirectory = _toolPathResolver.GetToolsBinDirectory();
             var workDirectory = _toolPathResolver.GetToolWorkingDirectory(tool.Id);
 
             if (Directory.Exists(workDirectory))
@@ -43,6 +44,7 @@ public class ToolInstallationService : IToolInstaller
 
             Directory.CreateDirectory(workDirectory);
             Directory.CreateDirectory(installDirectory);
+            Directory.CreateDirectory(binDirectory);
 
             var downloadFilePath = Path.Combine(workDirectory, GetDownloadFileName(installer));
 
@@ -96,6 +98,9 @@ public class ToolInstallationService : IToolInstaller
 
             var sourceBinaryPath = ResolveSourceBinaryPath(installer, downloadFilePath, extractionDirectory);
             var targetBinaryPath = _toolPathResolver.GetToolExecutablePath(tool.Id, installer.ExecutableName);
+
+            if (File.Exists(targetBinaryPath))
+                File.Delete(targetBinaryPath);
 
             File.Copy(sourceBinaryPath, targetBinaryPath, true);
 

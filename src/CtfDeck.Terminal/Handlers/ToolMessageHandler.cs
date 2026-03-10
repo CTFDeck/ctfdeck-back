@@ -23,55 +23,55 @@ public class ToolMessageHandler : MessageHandlerBase
         switch (type)
         {
             case MessageType.ToolInventoryRequest:
-            {
-                var request = new ToolInventoryRequest(data);
-                var messageId = request.MessageId;
+                {
+                    var request = new ToolInventoryRequest(data);
+                    var messageId = request.MessageId;
 
-                var inventory = _toolInstallationCoordinator
-                    .GetInventoryAsync(CurrentCancellationToken)
-                    .GetAwaiter()
-                    .GetResult();
+                    var inventory = _toolInstallationCoordinator
+                        .GetInventoryAsync(CurrentCancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
 
-                return ToolProtocolSerializer.SerializeInventoryResult(messageId, inventory);
-            }
+                    return ToolProtocolSerializer.SerializeInventoryResult(messageId, inventory);
+                }
 
             case MessageType.ToolInstallRequest:
-            {
-                var request = new ToolInstallRequest(data);
-                var messageId = request.MessageId;
-                var toolIds = request.ToolIds.ToArray();
-                var sendAsync = CurrentSendAsync
-                    ?? throw new InvalidOperationException("CurrentSendAsync is not available.");
-
-                var cancellationToken = CurrentCancellationToken;
-
-                _ = Task.Run(async () =>
                 {
-                    try
+                    var request = new ToolInstallRequest(data);
+                    var messageId = request.MessageId;
+                    var toolIds = request.ToolIds.ToArray();
+                    var sendAsync = CurrentSendAsync
+                        ?? throw new InvalidOperationException("CurrentSendAsync is not available.");
+
+                    var cancellationToken = CurrentCancellationToken;
+
+                    _ = Task.Run(async () =>
                     {
-                        await _toolInstallationCoordinator.InstallAsync(
-                            toolIds,
-                            async progress =>
-                            {
-                                await sendAsync(
-                                    ToolProtocolSerializer.SerializeInstallProgress(messageId, progress));
-                            },
-                            cancellationToken);
+                        try
+                        {
+                            await _toolInstallationCoordinator.InstallAsync(
+                                toolIds,
+                                async progress =>
+                                {
+                                    await sendAsync(
+                                        ToolProtocolSerializer.SerializeInstallProgress(messageId, progress));
+                                },
+                                cancellationToken);
 
-                        var inventory = await _toolInstallationCoordinator.GetInventoryAsync(cancellationToken);
+                            var inventory = await _toolInstallationCoordinator.GetInventoryAsync(cancellationToken);
 
-                        await sendAsync(
-                            ToolProtocolSerializer.SerializeInventoryResult(messageId, inventory));
-                    }
-                    catch (Exception ex)
-                    {
-                        await sendAsync(
-                            ToolProtocolSerializer.SerializeError(messageId, ex.Message));
-                    }
-                }, cancellationToken);
+                            await sendAsync(
+                                ToolProtocolSerializer.SerializeInventoryResult(messageId, inventory));
+                        }
+                        catch (Exception ex)
+                        {
+                            await sendAsync(
+                                ToolProtocolSerializer.SerializeError(messageId, ex.Message));
+                        }
+                    }, cancellationToken);
 
-                return ToolProtocolSerializer.SerializeInstallAccepted(messageId, true);
-            }
+                    return ToolProtocolSerializer.SerializeInstallAccepted(messageId, true);
+                }
 
             default:
                 throw new InvalidOperationException($"Unsupported tool message type '{type}'.");

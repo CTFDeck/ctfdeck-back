@@ -68,7 +68,7 @@ public class WebSocketServer
         IWriteUpRepository writeUpRepository = new WriteUpRepository(_dbContext);
         IMediaRepository mediaRepository = new MediaRepository(_dbContext);
         IProjectRepository projectRepository = new ProjectRepository(_dbContext);
-        
+
         IToolCatalogProvider toolCatalogProvider = new ToolCatalogService();
         IToolPathResolver toolPathResolver = new ToolPathResolver();
         IToolDetector toolDetector = new ToolDetectionService(toolCatalogProvider, toolPathResolver);
@@ -328,7 +328,11 @@ public class WebSocketServer
 
                                 foreach (var handler in _messageHandlers)
                                 {
-                                    if (await handler.TryHandleAsync(clientId, message, ctx.Sender.SendAsync, _cancellationTokenSource.Token))
+                                    if (await handler.TryHandleAsync(
+                                            clientId,
+                                            message,
+                                            payload => ctx.Sender.SendAsync(payload, _cancellationTokenSource.Token),
+                                            _cancellationTokenSource.Token))
                                     {
                                         handled = true;
                                         break;

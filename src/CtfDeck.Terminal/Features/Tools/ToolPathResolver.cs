@@ -27,11 +27,14 @@ public class ToolPathResolver : IToolPathResolver
         throw new PlatformNotSupportedException("Unsupported OS.");
     }
 
+    public string GetToolsBinDirectory()
+        => Path.Combine(GetToolsRootDirectory(), "bin");
+
     public string GetToolInstallDirectory(string toolId)
         => Path.Combine(GetToolsRootDirectory(), toolId);
 
     public string GetToolExecutablePath(string toolId, string executableName)
-        => Path.Combine(GetToolInstallDirectory(toolId), executableName);
+        => Path.Combine(GetToolsBinDirectory(), executableName);
 
     public string GetToolWorkingDirectory(string toolId)
         => Path.Combine(Path.GetTempPath(), "CtfDeck", "tools-work", toolId);

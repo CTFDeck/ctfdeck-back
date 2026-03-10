@@ -135,12 +135,53 @@ public static class ProcessRunner
         return new Process { StartInfo = startInfo };
     }
 
+    private static string GetToolsBinDirectory()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CtfDeck",
+                "tools",
+                "bin");
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return Path.Combine(
+                home,
+                "Library",
+                "Application Support",
+                "CtfDeck",
+                "tools",
+                "bin");
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return Path.Combine(
+                home,
+                ".local",
+                "share",
+                "ctfdeck",
+                "tools",
+                "bin");
+        }
+
+        throw new PlatformNotSupportedException("Unsupported OS.");
+    }
+
     private static void ConfigureEnvironment(ProcessStartInfo startInfo)
     {
-        startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "";
+        var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+        startInfo.Environment["PATH"] = currentPath;
         startInfo.Environment["TERM"] = "xterm-256color";
         startInfo.Environment["COLORTERM"] = "truecolor";
         startInfo.Environment["CLICOLOR_FORCE"] = "1";
+
+        AddToolsBinToPath(startInfo, GetToolsBinDirectory());
     }
 
     private static void KillProcess(Process process)
@@ -151,5 +192,21 @@ public static class ProcessRunner
                 process.Kill(entireProcessTree: true);
         }
         catch { }
+    }
+
+    private static void AddToolsBinToPath(ProcessStartInfo psi, string toolsBinDirectory)
+    {
+        Directory.CreateDirectory(toolsBinDirectory);
+
+        var currentPath =
+            psi.Environment.TryGetValue("PATH", out var explicitPath) && !string.IsNullOrWhiteSpace(explicitPath)
+                ? explicitPath
+                : Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+
+        var effectivePath = string.IsNullOrWhiteSpace(currentPath)
+            ? toolsBinDirectory
+            : $"{toolsBinDirectory}{Path.PathSeparator}{currentPath}";
+
+        psi.Environment["PATH"] = effectivePath;
     }
 }
