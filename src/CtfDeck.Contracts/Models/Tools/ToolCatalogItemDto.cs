@@ -1,6 +1,6 @@
 namespace CtfDeck.Contracts.Models.Tools;
 
-public class ToolDefinition
+public class ToolCatalogItemDto
 {
     public required string Id { get; set; }
     public required string DisplayName { get; set; }
@@ -8,7 +8,9 @@ public class ToolDefinition
     public required string Kind { get; set; }
     public required string Description { get; set; }
     public string? ExternalUrl { get; set; }
-    public string? CheckCommand { get; set; }
-    public string? CheckArguments { get; set; }
-    public List<ToolInstaller> Installers { get; set; } = [];
+    public required bool IsInstalled { get; set; }
+    public required bool IsInstallable { get; set; }
+    public string? InstalledPath { get; set; }
+    public string? Version { get; set; }
+    public string? Reason { get; set; }
 }

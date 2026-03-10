@@ -40,6 +40,22 @@ public class ToolDetectionService : IToolDetector
     {
         await Task.CompletedTask;
 
+        if (tool.Kind.Equals("externalWebApp", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ToolStatusDto
+            {
+                Id = tool.Id,
+                DisplayName = tool.DisplayName,
+                Description = tool.Description,
+                Kind = tool.Kind,
+                IsInstalled = false,
+                IsInstallable = false,
+                InstalledPath = null,
+                Version = null,
+                Reason = null
+            };
+        }
+
         var installer = ResolveInstaller(tool);
         var isInstallable = installer is not null;
 
@@ -53,6 +69,7 @@ public class ToolDetectionService : IToolDetector
                     Id = tool.Id,
                     DisplayName = tool.DisplayName,
                     Description = tool.Description,
+                    Kind = tool.Kind,
                     IsInstalled = true,
                     IsInstallable = true,
                     InstalledPath = localPath,
@@ -72,6 +89,7 @@ public class ToolDetectionService : IToolDetector
                 Id = tool.Id,
                 DisplayName = tool.DisplayName,
                 Description = tool.Description,
+                Kind = tool.Kind,
                 IsInstalled = true,
                 IsInstallable = isInstallable,
                 InstalledPath = pathExecutable,
@@ -85,6 +103,7 @@ public class ToolDetectionService : IToolDetector
             Id = tool.Id,
             DisplayName = tool.DisplayName,
             Description = tool.Description,
+            Kind = tool.Kind,
             IsInstalled = false,
             IsInstallable = isInstallable,
             InstalledPath = null,

@@ -5,6 +5,7 @@ public class ToolStatusDto
     public required string Id { get; set; }
     public required string DisplayName { get; set; }
     public required string Description { get; set; }
+    public required string Kind { get; set; }
     public required bool IsInstalled { get; set; }
     public required bool IsInstallable { get; set; }
     public string? InstalledPath { get; set; }

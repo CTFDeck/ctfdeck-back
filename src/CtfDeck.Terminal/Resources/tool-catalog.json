@@ -4,7 +4,10 @@
     {
       "id": "ffuf",
       "displayName": "ffuf",
+      "category": "WEB_DISCOVERY",
+      "kind": "binary",
       "description": "Fast web fuzzer",
+      "externalUrl": "https://github.com/ffuf/ffuf/releases",
       "checkCommand": "ffuf",
       "checkArguments": "-h",
       "installers": [
@@ -46,7 +49,10 @@
     {
       "id": "gobuster",
       "displayName": "Gobuster",
+      "category": "WEB_DISCOVERY",
+      "kind": "binary",
       "description": "Directory, DNS and vhost busting tool",
+      "externalUrl": "https://github.com/OJ/gobuster/releases",
       "checkCommand": "gobuster",
       "checkArguments": "help",
       "installers": [
@@ -84,6 +90,320 @@
           "sha256": ""
         }
       ]
+    },
+    {
+      "id": "subfinder",
+      "displayName": "Subfinder",
+      "category": "RECON",
+      "kind": "binary",
+      "description": "Subdomain discovery tool",
+      "externalUrl": "https://github.com/projectdiscovery/subfinder/releases",
+      "checkCommand": "subfinder",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/subfinder/releases/download/v2.13.0/subfinder_2.13.0_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "subfinder.exe",
+          "executableName": "subfinder.exe",
+          "version": "2.13.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/subfinder/releases/download/v2.13.0/subfinder_2.13.0_linux_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "subfinder",
+          "executableName": "subfinder",
+          "version": "2.13.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/subfinder/releases/download/v2.13.0/subfinder_2.13.0_macOS_arm64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "subfinder",
+          "executableName": "subfinder",
+          "version": "2.13.0",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "httpx",
+      "displayName": "httpx",
+      "category": "HTTP_PROBING",
+      "kind": "binary",
+      "description": "Fast and multi-purpose HTTP toolkit",
+      "externalUrl": "https://github.com/projectdiscovery/httpx/releases",
+      "checkCommand": "httpx",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/httpx/releases/download/v1.9.0/httpx_1.9.0_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "httpx.exe",
+          "executableName": "httpx.exe",
+          "version": "1.9.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/httpx/releases/download/v1.9.0/httpx_1.9.0_linux_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "httpx",
+          "executableName": "httpx",
+          "version": "1.9.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/httpx/releases/download/v1.9.0/httpx_1.9.0_macOS_arm64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "httpx",
+          "executableName": "httpx",
+          "version": "1.9.0",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "dnsx",
+      "displayName": "dnsx",
+      "category": "RECON",
+      "kind": "binary",
+      "description": "Fast and multi-purpose DNS toolkit",
+      "externalUrl": "https://github.com/projectdiscovery/dnsx/releases",
+      "checkCommand": "dnsx",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/dnsx/releases/download/v1.2.0/dnsx_1.2.0_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "dnsx.exe",
+          "executableName": "dnsx.exe",
+          "version": "1.2.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/dnsx/releases/download/v1.2.0/dnsx_1.2.0_linux_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "dnsx",
+          "executableName": "dnsx",
+          "version": "1.2.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/dnsx/releases/download/v1.2.0/dnsx_1.2.0_macOS_arm64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "dnsx",
+          "executableName": "dnsx",
+          "version": "1.2.0",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "naabu",
+      "displayName": "Naabu",
+      "category": "PORT_SCANNING",
+      "kind": "binary",
+      "description": "Fast port scanner",
+      "externalUrl": "https://github.com/projectdiscovery/naabu/releases",
+      "checkCommand": "naabu",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/naabu/releases/download/v2.5.0/naabu_2.5.0_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "naabu.exe",
+          "executableName": "naabu.exe",
+          "version": "2.5.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/naabu/releases/download/v2.5.0/naabu_2.5.0_linux_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "naabu",
+          "executableName": "naabu",
+          "version": "2.5.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/naabu/releases/download/v2.5.0/naabu_2.5.0_macOS_arm64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "naabu",
+          "executableName": "naabu",
+          "version": "2.5.0",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "katana",
+      "displayName": "Katana",
+      "category": "WEB_DISCOVERY",
+      "kind": "binary",
+      "description": "Web crawling and spidering framework",
+      "externalUrl": "https://github.com/projectdiscovery/katana/releases",
+      "checkCommand": "katana",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/katana/releases/download/v1.5.0/katana_1.5.0_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "katana.exe",
+          "executableName": "katana.exe",
+          "version": "1.5.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/katana/releases/download/v1.5.0/katana_1.5.0_linux_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "katana",
+          "executableName": "katana",
+          "version": "1.5.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/katana/releases/download/v1.5.0/katana_1.5.0_macOS_arm64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "katana",
+          "executableName": "katana",
+          "version": "1.5.0",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "nuclei",
+      "displayName": "Nuclei",
+      "category": "WEB_VULN_SCAN",
+      "kind": "binary",
+      "description": "Fast vulnerability scanner based on templates",
+      "externalUrl": "https://github.com/projectdiscovery/nuclei/releases",
+      "checkCommand": "nuclei",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.7/nuclei_3.2.7_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "nuclei.exe",
+          "executableName": "nuclei.exe",
+          "version": "3.2.7",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.7/nuclei_3.2.7_linux_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "nuclei",
+          "executableName": "nuclei",
+          "version": "3.2.7",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.7/nuclei_3.2.7_macOS_arm64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "nuclei",
+          "executableName": "nuclei",
+          "version": "3.2.7",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "revshells",
+      "displayName": "RevShells",
+      "category": "REVERSE_SHELL",
+      "kind": "externalWebApp",
+      "description": "Reverse shell generator website",
+      "externalUrl": "https://www.revshells.com",
+      "checkCommand": null,
+      "checkArguments": null,
+      "installers": []
+    },
+    {
+      "id": "cyberchef",
+      "displayName": "CyberChef",
+      "category": "UTILS",
+      "kind": "externalWebApp",
+      "description": "Web app for encoding, decoding and data transformations",
+      "externalUrl": "https://gchq.github.io/CyberChef/",
+      "checkCommand": null,
+      "checkArguments": null,
+      "installers": []
+    },
+    {
+      "id": "cve-org",
+      "displayName": "CVE.org",
+      "category": "DOCUMENTATION",
+      "kind": "externalWebApp",
+      "description": "Official CVE catalog website",
+      "externalUrl": "https://www.cve.org",
+      "checkCommand": null,
+      "checkArguments": null,
+      "installers": []
+    },
+    {
+      "id": "exploit-db",
+      "displayName": "Exploit-DB",
+      "category": "EXPLOIT",
+      "kind": "externalWebApp",
+      "description": "Exploit database website",
+      "externalUrl": "https://www.exploit-db.com",
+      "checkCommand": null,
+      "checkArguments": null,
+      "installers": []
     }
   ]
 }

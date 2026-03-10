@@ -58,9 +58,36 @@ public class ToolCatalogService : IToolCatalogProvider
             if (string.IsNullOrWhiteSpace(tool.Id))
                 throw new InvalidOperationException("Tool id cannot be empty.");
 
-            if (tool.Installers.Count == 0)
-                throw new InvalidOperationException($"Tool '{tool.Id}' has no installer.");
+            if (string.IsNullOrWhiteSpace(tool.DisplayName))
+                throw new InvalidOperationException($"Tool '{tool.Id}' has no displayName.");
 
+            if (string.IsNullOrWhiteSpace(tool.Category))
+                throw new InvalidOperationException($"Tool '{tool.Id}' has no category.");
+
+            if (string.IsNullOrWhiteSpace(tool.Kind))
+                throw new InvalidOperationException($"Tool '{tool.Id}' has no kind.");
+
+            var isBinary = tool.Kind.Equals("binary", StringComparison.OrdinalIgnoreCase);
+            var isExternalWebApp = tool.Kind.Equals("externalWebApp", StringComparison.OrdinalIgnoreCase);
+
+            if (!isBinary && !isExternalWebApp)
+                throw new InvalidOperationException(
+                    $"Tool '{tool.Id}' has an invalid kind '{tool.Kind}'. Expected 'binary' or 'externalWebApp'.");
+
+            if (isExternalWebApp)
+            {
+                if (string.IsNullOrWhiteSpace(tool.ExternalUrl))
+                    throw new InvalidOperationException($"External web app '{tool.Id}' must define externalUrl.");
+
+                continue;
+            }
+
+            if (tool.Installers is null)
+                throw new InvalidOperationException($"Binary tool '{tool.Id}' has null installers.");
+
+            // IMPORTANT:
+            // Binary tools are allowed to have 0 installers.
+            // In that case they will simply be considered not installable on the current platform.
             foreach (var installer in tool.Installers)
             {
                 if (string.IsNullOrWhiteSpace(installer.Os) ||

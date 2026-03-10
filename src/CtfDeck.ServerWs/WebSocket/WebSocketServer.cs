@@ -33,6 +33,8 @@ using CtfDeck.Terminal.Terminal.Shell;
 using CtfDeck.Abstractions.Ports.Tools;
 using CtfDeck.Terminal.Features.Tools;
 
+using CtfDeck.Contracts.Protocols.Tools;
+
 namespace CtfDeck.ServerWs.WebSocket;
 
 public class WebSocketServer
@@ -53,6 +55,8 @@ public class WebSocketServer
     private readonly CommandDispatcher _commandDispatcher;
 
     private readonly List<MessageHandlerBase> _messageHandlers;
+
+    private readonly ToolCatalogSnapshotService _toolCatalogSnapshotService;
 
     public WebSocketServer(string host = "localhost", int port = 8080, bool useInMemoryDb = false)
     {
@@ -76,6 +80,7 @@ public class WebSocketServer
         IToolInstaller toolInstaller = new ToolInstallationService(toolPathResolver, archiveExtractor);
         IToolInstallationCoordinator toolInstallationCoordinator =
             new ToolInstallationCoordinator(toolCatalogProvider, toolDetector, toolInstaller);
+        _toolCatalogSnapshotService = new ToolCatalogSnapshotService(toolCatalogProvider, toolDetector);
 
         ICommandAliasRepository aliasRepository = new CommandAliasRepository(_dbContext);
         _commandAliasService = new CommandAliasService(aliasRepository);
@@ -217,6 +222,22 @@ public class WebSocketServer
         }
     }
 
+    private async Task SendInitialToolCatalogAsync(ClientContext ctx)
+    {
+        try
+        {
+            var snapshot = await _toolCatalogSnapshotService.GetSnapshotAsync(_cancellationTokenSource.Token);
+            var payload = ToolProtocolSerializer.SerializeCatalogSnapshot(snapshot);
+            Console.WriteLine("Sending initial tool catalog snapshot to client {ctx.ClientId}, size={payload.Length} bytes");
+
+            await ctx.Sender.SendAsync(payload);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to send initial tool catalog to client {ctx.ClientId}: {ex.Message}");
+        }
+    }
+
     private async Task HandleWebSocketConnectionAsync(HttpListenerContext context)
     {
         WebSocketContext? webSocketContext = null;
@@ -233,6 +254,7 @@ public class WebSocketServer
                 _clients.TryAdd(clientId, ctx);
 
                 Console.WriteLine($"Client {clientId} connected from {context.Request.RemoteEndPoint}");
+                await SendInitialToolCatalogAsync(ctx);
 
                 await HandleClientMessagesAsync(ctx);
             }

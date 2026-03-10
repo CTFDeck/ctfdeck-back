@@ -19,6 +19,7 @@ public static class ToolProtocolSerializer
             writer.WriteString(tool.Id);
             writer.WriteString(tool.DisplayName);
             writer.WriteString(tool.Description);
+            writer.WriteString(tool.Kind);
             writer.WriteByte((byte)(tool.IsInstalled ? 1 : 0));
             writer.WriteByte((byte)(tool.IsInstallable ? 1 : 0));
             writer.WriteString(tool.InstalledPath ?? string.Empty);
@@ -54,4 +55,30 @@ public static class ToolProtocolSerializer
 
     public static byte[] SerializeError(Guid messageId, string error)
         => BinaryProtocolSerializer.SerializeError(MessageType.ToolOperationError, messageId, error);
+
+    public static byte[] SerializeCatalogSnapshot(IEnumerable<ToolCatalogItemDto> tools)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ToolCatalogSnapshot);
+
+        var list = tools.ToList();
+        writer.WriteInt32(list.Count);
+
+        foreach (var tool in list)
+        {
+            writer.WriteString(tool.Id);
+            writer.WriteString(tool.DisplayName);
+            writer.WriteString(tool.Category);
+            writer.WriteString(tool.Kind);
+            writer.WriteString(tool.Description);
+            writer.WriteString(tool.ExternalUrl ?? string.Empty);
+            writer.WriteByte((byte)(tool.IsInstalled ? 1 : 0));
+            writer.WriteByte((byte)(tool.IsInstallable ? 1 : 0));
+            writer.WriteString(tool.InstalledPath ?? string.Empty);
+            writer.WriteString(tool.Version ?? string.Empty);
+            writer.WriteString(tool.Reason ?? string.Empty);
+        }
+
+        return writer.ToArray();
+    }
 }

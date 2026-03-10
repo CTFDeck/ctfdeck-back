@@ -116,7 +116,7 @@ public class ToolInstallationService : IToolInstaller
 
             var verified = await VerifyAsync(targetBinaryPath, tool.CheckArguments ?? "--help", cancellationToken);
             if (!verified)
-                throw new InvalidOperationException("Installed binary verification failed.");
+                throw new InvalidOperationException("Installed binary verification failed or timed out.");
 
             await progressCallback(new ToolInstallProgressDto
             {
@@ -244,21 +244,46 @@ public class ToolInstallationService : IToolInstaller
 
     private static async Task<bool> VerifyAsync(string binaryPath, string arguments, CancellationToken cancellationToken)
     {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
         var psi = new ProcessStartInfo
         {
             FileName = binaryPath,
             Arguments = arguments,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
 
         using var process = Process.Start(psi);
         if (process is null)
             return false;
 
-        await process.WaitForExitAsync(cancellationToken);
-        return process.ExitCode is 0 or 1;
+        try
+        {
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+            var waitTask = process.WaitForExitAsync(linkedCts.Token);
+
+            await Task.WhenAll(stdoutTask, stderrTask, waitTask);
+
+            return process.ExitCode is 0 or 1;
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
     }
 
     private static string GetCurrentOs()

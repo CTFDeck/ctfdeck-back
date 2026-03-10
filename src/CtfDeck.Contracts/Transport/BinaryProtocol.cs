@@ -124,6 +124,7 @@ public enum MessageType : byte
     ToolInstallAccepted = 123,
     ToolInstallProgress = 124,
     ToolOperationError = 125,
+    ToolCatalogSnapshot = 126,
 }
 
 /// <summary>
