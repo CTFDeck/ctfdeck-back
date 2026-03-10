@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "tools": [
+    {
+      "id": "ffuf",
+      "displayName": "ffuf",
+      "description": "Fast web fuzzer",
+      "checkCommand": "ffuf",
+      "checkArguments": "-h",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_windows_amd64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "ffuf.exe",
+          "executableName": "ffuf.exe",
+          "version": "2.1.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_linux_amd64.tar.gz",
+          "archiveType": "tar.gz",
+          "executableRelativePath": "ffuf",
+          "executableName": "ffuf",
+          "version": "2.1.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_macos_arm64.tar.gz",
+          "archiveType": "tar.gz",
+          "executableRelativePath": "ffuf",
+          "executableName": "ffuf",
+          "version": "2.1.0",
+          "sha256": ""
+        }
+      ]
+    },
+    {
+      "id": "gobuster",
+      "displayName": "Gobuster",
+      "description": "Directory, DNS and vhost busting tool",
+      "checkCommand": "gobuster",
+      "checkArguments": "help",
+      "installers": [
+        {
+          "os": "windows",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/OJ/gobuster/releases/download/v3.6.0/gobuster_Windows_x86_64.zip",
+          "archiveType": "zip",
+          "executableRelativePath": "gobuster.exe",
+          "executableName": "gobuster.exe",
+          "version": "3.6.0",
+          "sha256": ""
+        },
+        {
+          "os": "linux",
+          "arch": "x64",
+          "type": "archive",
+          "url": "https://github.com/OJ/gobuster/releases/download/v3.6.0/gobuster_Linux_x86_64.tar.gz",
+          "archiveType": "tar.gz",
+          "executableRelativePath": "gobuster",
+          "executableName": "gobuster",
+          "version": "3.6.0",
+          "sha256": ""
+        },
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "type": "archive",
+          "url": "https://github.com/OJ/gobuster/releases/download/v3.6.0/gobuster_Darwin_arm64.tar.gz",
+          "archiveType": "tar.gz",
+          "executableRelativePath": "gobuster",
+          "executableName": "gobuster",
+          "version": "3.6.0",
+          "sha256": ""
+        }
+      ]
+    }
+  ]
+}

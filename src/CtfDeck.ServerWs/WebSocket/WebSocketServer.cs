@@ -30,6 +30,9 @@ using CtfDeck.Terminal.Features.Aliases;
 using CtfDeck.Terminal.Handlers;
 using CtfDeck.Terminal.Terminal.Shell;
 
+using CtfDeck.Abstractions.Ports.Tools;
+using CtfDeck.Terminal.Features.Tools;
+
 namespace CtfDeck.ServerWs.WebSocket;
 
 public class WebSocketServer
@@ -65,6 +68,14 @@ public class WebSocketServer
         IWriteUpRepository writeUpRepository = new WriteUpRepository(_dbContext);
         IMediaRepository mediaRepository = new MediaRepository(_dbContext);
         IProjectRepository projectRepository = new ProjectRepository(_dbContext);
+        
+        IToolCatalogProvider toolCatalogProvider = new ToolCatalogService();
+        IToolPathResolver toolPathResolver = new ToolPathResolver();
+        IToolDetector toolDetector = new ToolDetectionService(toolCatalogProvider, toolPathResolver);
+        var archiveExtractor = new ArchiveExtractor();
+        IToolInstaller toolInstaller = new ToolInstallationService(toolPathResolver, archiveExtractor);
+        IToolInstallationCoordinator toolInstallationCoordinator =
+            new ToolInstallationCoordinator(toolCatalogProvider, toolDetector, toolInstaller);
 
         ICommandAliasRepository aliasRepository = new CommandAliasRepository(_dbContext);
         _commandAliasService = new CommandAliasService(aliasRepository);
@@ -89,7 +100,8 @@ public class WebSocketServer
             new CustomScriptMessageHandler(customScriptService),
             new WriteUpMessageHandler(writeUpService),
             new MediaMessageHandler(mediaService),
-            new ProjectMessageHandler(projectService)
+            new ProjectMessageHandler(projectService),
+            new ToolMessageHandler(toolInstallationCoordinator)
         ];
     }
 

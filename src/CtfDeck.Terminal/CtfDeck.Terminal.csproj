@@ -10,6 +10,8 @@
     <ItemGroup>
         <ProjectReference Include="..\CtfDeck.Contracts\CtfDeck.Contracts.csproj" />
         <ProjectReference Include="..\CtfDeck.Abstractions\CtfDeck.Abstractions.csproj" />
+        <ProjectReference Include="..\CtfDeck.Data\CtfDeck.Data.csproj"/>
+        <EmbeddedResource Include="Resources\tool-catalog.json" />
     </ItemGroup>
 
 </Project>
