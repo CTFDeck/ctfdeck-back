@@ -65,7 +65,7 @@ public sealed class ProjectRepository : IProjectRepository
         {
             var query = _context.Projects.FindAll();
             var totalCount = query.Count();
-            
+
             var items = query
                 .OrderByDescending(p => p.CreatedAt)
                 .Skip(offset)
@@ -80,7 +80,7 @@ public sealed class ProjectRepository : IProjectRepository
                     FolderCount = p.Folders?.Count ?? 0
                 })
                 .ToList();
-                
+
             return (items, totalCount);
         }
     }

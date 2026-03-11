@@ -58,7 +58,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
                 .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
-                
+
             return (items, totalCount);
         }
     }
@@ -99,7 +99,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
                 .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
-                
+
             return (items, totalCount);
         }
     }
@@ -164,10 +164,10 @@ public sealed class WriteUpRepository : IWriteUpRepository
     {
         lock (_lock)
         {
-            var query = unassignedOnly 
+            var query = unassignedOnly
                 ? _context.WriteUps.Find(w => w.ProjectId == null)
                 : _context.WriteUps.FindAll();
-                
+
             var totalCount = query.Count();
 
             var items = query
@@ -176,7 +176,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
                 .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
-                
+
             return (items, totalCount);
         }
     }

@@ -48,10 +48,10 @@ public sealed class SessionRepository : ISessionRepository
     {
         lock (_lock)
         {
-            var query = unassignedOnly 
+            var query = unassignedOnly
                 ? _context.Sessions.Find(s => s.ProjectId == null)
                 : _context.Sessions.FindAll();
-                
+
             var totalCount = query.Count();
 
             var items = query
@@ -71,7 +71,7 @@ public sealed class SessionRepository : ISessionRepository
                     FolderId = s.FolderId
                 })
                 .ToList();
-                
+
             return (items, totalCount);
         }
     }
@@ -220,7 +220,7 @@ public sealed class SessionRepository : ISessionRepository
                     FolderId = s.FolderId
                 })
                 .ToList();
-                
+
             return (items, totalCount);
         }
     }
@@ -288,7 +288,7 @@ public sealed class SessionRepository : ISessionRepository
                     FolderId = s.FolderId
                 })
                 .ToList();
-                
+
             return items;
         }
     }
