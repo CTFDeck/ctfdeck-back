@@ -45,14 +45,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
-    public List<WriteUpMetadataDto> GetBySessionId(Guid sessionId)
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetBySessionId(Guid sessionId, int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.WriteUps
-                .Find(w => w.SessionId == sessionId)
+            var query = _context.WriteUps.Find(w => w.SessionId == sessionId);
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(w => w.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
+                
+            return (items, totalCount);
         }
     }
 
@@ -79,14 +86,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
-    public List<WriteUpMetadataDto> GetByFolderId(Guid folderId)
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetByFolderId(Guid folderId, int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.WriteUps
-                .Find(w => w.FolderId == folderId)
+            var query = _context.WriteUps.Find(w => w.FolderId == folderId);
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(w => w.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
+                
+            return (items, totalCount);
         }
     }
 
@@ -117,11 +131,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
-    public IEnumerable<WriteUpMetadataDto> GetAllMetadata()
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.WriteUps.FindAll().Select(ToMetadataDto).ToList();
+            var query = _context.WriteUps.FindAll();
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(w => w.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
+                .Select(ToMetadataDto)
+                .ToList();
+                
+            return (items, totalCount);
         }
     }
 

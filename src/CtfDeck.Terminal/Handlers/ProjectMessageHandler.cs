@@ -56,8 +56,8 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleList(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListRequest(data);
-        var projects = _projectService.GetAllMetadata();
-        return ProjectProtocolSerializer.SerializeListResult(request.MessageId, projects);
+        var result = _projectService.GetAllMetadata(request.Offset, request.Limit);
+        return ProjectProtocolSerializer.SerializeListResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleUpdate(ReadOnlySpan<byte> data)
@@ -113,14 +113,14 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleListSessions(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListSessionsRequest(data);
-        var sessions = _projectService.ListSessions(request.ProjectId);
-        return ProjectProtocolSerializer.SerializeListSessionsResult(request.MessageId, sessions);
+        var result = _projectService.ListSessions(request.ProjectId, request.Offset, request.Limit);
+        return ProjectProtocolSerializer.SerializeListSessionsResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleListWriteUps(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListWriteUpsRequest(data);
-        var writeUps = _projectService.ListWriteUps(request.FolderId);
-        return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, writeUps);
+        var result = _projectService.ListWriteUps(request.FolderId, request.Offset, request.Limit);
+        return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, result.Items, result.TotalCount);
     }
 }

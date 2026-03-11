@@ -21,8 +21,8 @@ public class SessionService
     public SessionDto? GetById(Guid id)
         => _repository.GetById(id);
 
-    public IEnumerable<SessionMetadataDto> GetAllMetadata()
-        => _repository.GetAllMetadata();
+    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
+        => _repository.GetAllMetadata(offset, limit);
 
     public bool Update(Guid id, string name, string description)
         => _repository.Update(id, name, description);

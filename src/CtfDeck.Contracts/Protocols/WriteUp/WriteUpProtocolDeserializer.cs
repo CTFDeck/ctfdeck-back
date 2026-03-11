@@ -65,12 +65,16 @@ public readonly ref struct WriteUpListRequest
 {
     public readonly Guid MessageId;
     public readonly Guid SessionId;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public WriteUpListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId]
+        // Format: [1B type][16B msgId][16B sessionId][4B offset][4B limit]
         MessageId = new Guid(data.Slice(1, 16));
         SessionId = new Guid(data.Slice(17, 16));
+        Offset = BitConverter.ToInt32(data.Slice(33, 4));
+        Limit = BitConverter.ToInt32(data.Slice(37, 4));
     }
 }
 

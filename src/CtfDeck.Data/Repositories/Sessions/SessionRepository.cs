@@ -44,12 +44,17 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
-    public IEnumerable<SessionMetadataDto> GetAllMetadata()
+    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.Sessions
-                .FindAll()
+            var query = _context.Sessions.FindAll();
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(s => s.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(s => new SessionMetadataDto
                 {
                     Id = s.Id,
@@ -63,6 +68,8 @@ public sealed class SessionRepository : ISessionRepository
                     FolderId = s.FolderId
                 })
                 .ToList();
+                
+            return (items, totalCount);
         }
     }
 
@@ -186,12 +193,17 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
-    public IEnumerable<SessionMetadataDto> GetByProjectId(Guid projectId)
+    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetByProjectId(Guid projectId, int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.Sessions
-                .Find(s => s.ProjectId == projectId)
+            var query = _context.Sessions.Find(s => s.ProjectId == projectId);
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(s => s.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(s => new SessionMetadataDto
                 {
                     Id = s.Id,
@@ -204,6 +216,8 @@ public sealed class SessionRepository : ISessionRepository
                     ProjectId = s.ProjectId
                 })
                 .ToList();
+                
+            return (items, totalCount);
         }
     }
 
@@ -254,8 +268,9 @@ public sealed class SessionRepository : ISessionRepository
     {
         lock (_lock)
         {
-            return _context.Sessions
-                .Find(s => s.FolderId == folderId)
+            var query = _context.Sessions.Find(s => s.FolderId == folderId);
+
+            var items = query
                 .Select(s => new SessionMetadataDto
                 {
                     Id = s.Id,
@@ -269,6 +284,8 @@ public sealed class SessionRepository : ISessionRepository
                     FolderId = s.FolderId
                 })
                 .ToList();
+                
+            return items;
         }
     }
 

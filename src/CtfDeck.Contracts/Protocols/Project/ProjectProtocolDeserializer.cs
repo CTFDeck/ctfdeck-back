@@ -42,11 +42,15 @@ public readonly ref struct ProjectLoadRequest
 public readonly ref struct ProjectListRequest
 {
     public readonly Guid MessageId;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public ProjectListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId]
+        // Format: [1B type][16B msgId][4B offset][4B limit]
         MessageId = new Guid(data.Slice(1, 16));
+        Offset = BitConverter.ToInt32(data.Slice(17, 4));
+        Limit = BitConverter.ToInt32(data.Slice(21, 4));
     }
 }
 
@@ -183,12 +187,16 @@ public readonly ref struct ProjectListSessionsRequest
 {
     public readonly Guid MessageId;
     public readonly Guid ProjectId;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public ProjectListSessionsRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId]
+        // Format: [1B type][16B msgId][16B projectId][4B offset][4B limit]
         MessageId = new Guid(data.Slice(1, 16));
         ProjectId = new Guid(data.Slice(17, 16));
+        Offset = BitConverter.ToInt32(data.Slice(33, 4));
+        Limit = BitConverter.ToInt32(data.Slice(37, 4));
     }
 }
 
@@ -196,12 +204,16 @@ public readonly ref struct ProjectListWriteUpsRequest
 {
     public readonly Guid MessageId;
     public readonly Guid FolderId;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public ProjectListWriteUpsRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B folderId]
+        // Format: [1B type][16B msgId][16B folderId][4B offset][4B limit]
         MessageId = new Guid(data.Slice(1, 16));
         FolderId = new Guid(data.Slice(17, 16));
+        Offset = BitConverter.ToInt32(data.Slice(33, 4));
+        Limit = BitConverter.ToInt32(data.Slice(37, 4));
     }
 }
 

@@ -47,11 +47,15 @@ public readonly ref struct SessionLoadRequest
 public readonly ref struct SessionListRequest
 {
     public readonly Guid MessageId;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public SessionListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId]
+        // Format: [1B type][16B msgId][4B offset][4B limit]
         MessageId = new Guid(data.Slice(1, 16));
+        Offset = BitConverter.ToInt32(data.Slice(17, 4));
+        Limit = BitConverter.ToInt32(data.Slice(21, 4));
     }
 }
 

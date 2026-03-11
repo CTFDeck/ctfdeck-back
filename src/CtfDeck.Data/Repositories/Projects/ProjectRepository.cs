@@ -59,12 +59,17 @@ public sealed class ProjectRepository : IProjectRepository
         }
     }
 
-    public IEnumerable<ProjectMetadataDto> GetAllMetadata()
+    public (IEnumerable<ProjectMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.Projects
-                .FindAll()
+            var query = _context.Projects.FindAll();
+            var totalCount = query.Count();
+            
+            var items = query
+                .OrderByDescending(p => p.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(p => new ProjectMetadataDto
                 {
                     Id = p.Id,
@@ -75,6 +80,8 @@ public sealed class ProjectRepository : IProjectRepository
                     FolderCount = p.Folders?.Count ?? 0
                 })
                 .ToList();
+                
+            return (items, totalCount);
         }
     }
 

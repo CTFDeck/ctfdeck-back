@@ -18,8 +18,11 @@ public class WriteUpService
     public WriteUpDto? GetById(Guid id)
         => _repository.GetById(id);
 
-    public List<WriteUpMetadataDto> GetBySessionId(Guid sessionId)
-        => _repository.GetBySessionId(sessionId);
+    public (List<WriteUpMetadataDto> Items, int TotalCount) GetBySessionId(Guid sessionId, int offset = 0, int limit = 50)
+    {
+        var result = _repository.GetBySessionId(sessionId, offset, limit);
+        return (result.Items.ToList(), result.TotalCount);
+    }
 
     public bool Update(Guid id, string name, string content)
         => _repository.Update(id, name, content);
@@ -27,6 +30,9 @@ public class WriteUpService
     public bool Delete(Guid id)
         => _repository.Delete(id);
 
-    public List<WriteUpMetadataDto> GetAllMetadata()
-        => _repository.GetAllMetadata().ToList();
+    public (List<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
+    {
+        var result = _repository.GetAllMetadata(offset, limit);
+        return (result.Items.ToList(), result.TotalCount);
+    }
 }

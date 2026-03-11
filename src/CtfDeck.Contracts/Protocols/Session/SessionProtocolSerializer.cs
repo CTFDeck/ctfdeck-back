@@ -33,7 +33,7 @@ public static class SessionProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeListResult(Guid messageId, IEnumerable<SessionMetadataDto> sessions)
+    public static byte[] SerializeListResult(Guid messageId, IEnumerable<SessionMetadataDto> sessions, int totalCount)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionListResult);
@@ -41,6 +41,7 @@ public static class SessionProtocolSerializer
 
         var list = sessions.ToList();
         writer.WriteInt32(list.Count);
+        writer.WriteInt32(totalCount);
 
         foreach (var meta in list)
         {
