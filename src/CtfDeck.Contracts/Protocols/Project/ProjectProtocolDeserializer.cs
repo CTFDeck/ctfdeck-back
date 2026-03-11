@@ -92,15 +92,19 @@ public class ProjectAddFolderRequest
 {
     public Guid MessageId { get; }
     public Guid ProjectId { get; }
+    public Guid? ParentId { get; }
     public string Name { get; }
 
     public ProjectAddFolderRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][4B nameLen][name]
+        // Format: [1B type][16B msgId][16B projectId][16B parentId][4B nameLen][name]
         MessageId = new Guid(data.Slice(1, 16));
         ProjectId = new Guid(data.Slice(17, 16));
+        
+        var parentIdRaw = new Guid(data.Slice(33, 16));
+        ParentId = parentIdRaw == Guid.Empty ? null : parentIdRaw;
 
-        var offset = 33;
+        var offset = 49;
         var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
         offset += 4;
         Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
@@ -146,15 +150,17 @@ public class ProjectRenameFolderRequest
 public readonly ref struct ProjectAssignSessionRequest
 {
     public readonly Guid MessageId;
-    public readonly Guid SessionId;
     public readonly Guid ProjectId;
+    public readonly Guid SessionId;
+    public readonly Guid FolderId;
 
     public ProjectAssignSessionRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][16B projectId]
+        // Format: [1B type][16B msgId][16B projectId][16B sessionId][16B folderId]
         MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
-        ProjectId = new Guid(data.Slice(33, 16));
+        ProjectId = new Guid(data.Slice(17, 16));
+        SessionId = new Guid(data.Slice(33, 16));
+        FolderId = new Guid(data.Slice(49, 16));
     }
 }
 

@@ -128,6 +128,7 @@ public static class ProjectProtocolSerializer
     private static void WriteProjectFolder(PooledBufferWriter writer, ProjectFolderDto folder)
     {
         writer.WriteGuid(folder.Id);
+        writer.WriteGuid(folder.ParentId ?? Guid.Empty);
         writer.WriteString(folder.Name ?? string.Empty);
         writer.WriteByte((byte)(folder.IsSystem ? 1 : 0));
     }
@@ -147,7 +148,7 @@ public static class ProjectProtocolSerializer
     private static void WriteWriteUpMetadata(PooledBufferWriter writer, WriteUpMetadataDto writeUp)
     {
         writer.WriteGuid(writeUp.Id);
-        writer.WriteGuid(writeUp.SessionId);
+        writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
         writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
         writer.WriteString(writeUp.Name);
         writer.WriteInt64(writeUp.CreatedAt.Ticks);
@@ -162,6 +163,5 @@ public static class ProjectProtocolSerializer
         writer.WriteInt64(meta.CreatedAt.Ticks);
         writer.WriteInt64(meta.UpdatedAt.Ticks);
         writer.WriteInt32(meta.FolderCount);
-        writer.WriteInt32(meta.SessionCount);
     }
 }

@@ -4,7 +4,7 @@ namespace CtfDeck.Abstractions.Ports.WriteUps;
 
 public interface IWriteUpRepository
 {
-    WriteUpDto Create(Guid sessionId, string name);
+    WriteUpDto Create(Guid? sessionId, string name);
     WriteUpDto? GetById(Guid id);
     List<WriteUpMetadataDto> GetBySessionId(Guid sessionId);
     bool Update(Guid id, string name, string content);
@@ -13,4 +13,5 @@ public interface IWriteUpRepository
     List<WriteUpMetadataDto> GetByFolderId(Guid folderId);
     bool SetFolderId(Guid writeUpId, Guid? folderId);
     void ClearFolderId(Guid folderId);
+    IEnumerable<WriteUpMetadataDto> GetAllMetadata();
 }

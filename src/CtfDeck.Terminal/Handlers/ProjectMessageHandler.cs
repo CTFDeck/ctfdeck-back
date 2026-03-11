@@ -77,7 +77,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleAddFolder(ReadOnlySpan<byte> data)
     {
         var request = new ProjectAddFolderRequest(data);
-        var folder = _projectService.AddFolder(request.ProjectId, request.Name);
+        var folder = _projectService.AddFolder(request.ProjectId, request.Name, request.ParentId);
         return ProjectProtocolSerializer.SerializeAddFolderResult(
             request.MessageId, folder != null, folder?.Id ?? Guid.Empty);
     }
@@ -99,7 +99,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleAssignSession(ReadOnlySpan<byte> data)
     {
         var request = new ProjectAssignSessionRequest(data);
-        var success = _projectService.AssignSession(request.SessionId, request.ProjectId);
+        var success = _projectService.AssignSession(request.SessionId, request.ProjectId, request.FolderId);
         return ProjectProtocolSerializer.SerializeAssignSessionResult(request.MessageId, success);
     }
 

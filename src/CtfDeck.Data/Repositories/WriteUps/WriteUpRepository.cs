@@ -15,7 +15,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
         _context = context;
     }
 
-    public WriteUpDto Create(Guid sessionId, string name)
+    public WriteUpDto Create(Guid? sessionId, string name)
     {
         var now = DateTime.UtcNow;
         var model = new WriteUp
@@ -114,6 +114,14 @@ public sealed class WriteUpRepository : IWriteUpRepository
                 writeUp.FolderId = null;
                 _context.WriteUps.Update(writeUp);
             }
+        }
+    }
+
+    public IEnumerable<WriteUpMetadataDto> GetAllMetadata()
+    {
+        lock (_lock)
+        {
+            return _context.WriteUps.FindAll().Select(ToMetadataDto).ToList();
         }
     }
 

@@ -56,7 +56,9 @@ public sealed class WriteUpMessageHandler : MessageHandlerBase
     private byte[] HandleList(ReadOnlySpan<byte> data)
     {
         var request = new WriteUpListRequest(data);
-        var writeUps = _writeUpService.GetBySessionId(request.SessionId);
+        var writeUps = request.SessionId == Guid.Empty 
+            ? _writeUpService.GetAllMetadata() 
+            : _writeUpService.GetBySessionId(request.SessionId);
         return WriteUpProtocolSerializer.SerializeListResult(request.MessageId, writeUps);
     }
 

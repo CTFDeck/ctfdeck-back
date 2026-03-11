@@ -18,6 +18,9 @@ public interface ISessionRepository
     bool UpdateTarget(Guid sessionId, SessionTargetDto target);
 
     IEnumerable<SessionMetadataDto> GetByProjectId(Guid projectId);
+    IEnumerable<SessionMetadataDto> GetByFolderId(Guid folderId);
     bool SetProjectId(Guid sessionId, Guid? projectId);
+    bool SetFolderId(Guid sessionId, Guid? folderId);
+    bool SetProjectAndFolderId(Guid sessionId, Guid? projectId, Guid? folderId);
     void ClearProjectId(Guid projectId);
 }

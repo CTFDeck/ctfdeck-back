@@ -46,7 +46,7 @@ public static class WriteUpProtocolSerializer
         if (success && writeUp != null)
         {
             writer.WriteGuid(writeUp.Id);
-            writer.WriteGuid(writeUp.SessionId);
+            writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
             writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
             writer.WriteString(writeUp.Name);
             writer.WriteString(writeUp.Content);
@@ -63,7 +63,7 @@ public static class WriteUpProtocolSerializer
     private static void WriteWriteUpMetadata(PooledBufferWriter writer, WriteUpMetadataDto writeUp)
     {
         writer.WriteGuid(writeUp.Id);
-        writer.WriteGuid(writeUp.SessionId);
+        writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
         writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
         writer.WriteString(writeUp.Name);
         writer.WriteInt64(writeUp.CreatedAt.Ticks);

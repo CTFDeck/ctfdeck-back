@@ -58,8 +58,8 @@ public class ProjectService
         return _projectRepository.Delete(id);
     }
 
-    public ProjectFolderDto? AddFolder(Guid projectId, string name)
-        => _projectRepository.AddFolder(projectId, name);
+    public ProjectFolderDto? AddFolder(Guid projectId, string name, Guid? parentId = null)
+        => _projectRepository.AddFolder(projectId, name, parentId);
 
     public bool DeleteFolder(Guid projectId, Guid folderId)
     {
@@ -70,10 +70,11 @@ public class ProjectService
     public bool RenameFolder(Guid projectId, Guid folderId, string name)
         => _projectRepository.RenameFolder(projectId, folderId, name);
 
-    public bool AssignSession(Guid sessionId, Guid projectId)
+    public bool AssignSession(Guid sessionId, Guid projectId, Guid folderId)
     {
         var actualProjectId = projectId == Guid.Empty ? (Guid?)null : projectId;
-        return _sessionRepository.SetProjectId(sessionId, actualProjectId);
+        var actualFolderId = folderId == Guid.Empty ? (Guid?)null : folderId;
+        return _sessionRepository.SetProjectAndFolderId(sessionId, actualProjectId, actualFolderId);
     }
 
     public bool MoveWriteUp(Guid writeUpId, Guid folderId)

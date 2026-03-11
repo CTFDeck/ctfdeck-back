@@ -12,7 +12,7 @@ public class WriteUpService
         _repository = repository;
     }
 
-    public WriteUpDto Create(Guid sessionId, string name)
+    public WriteUpDto Create(Guid? sessionId, string name)
         => _repository.Create(sessionId, name);
 
     public WriteUpDto? GetById(Guid id)
@@ -26,4 +26,7 @@ public class WriteUpService
 
     public bool Delete(Guid id)
         => _repository.Delete(id);
+
+    public List<WriteUpMetadataDto> GetAllMetadata()
+        => _repository.GetAllMetadata().ToList();
 }
