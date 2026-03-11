@@ -104,7 +104,7 @@ public class ProjectAddFolderRequest
         // Format: [1B type][16B msgId][16B projectId][16B parentId][4B nameLen][name]
         MessageId = new Guid(data.Slice(1, 16));
         ProjectId = new Guid(data.Slice(17, 16));
-        
+
         var parentIdRaw = new Guid(data.Slice(33, 16));
         ParentId = parentIdRaw == Guid.Empty ? null : parentIdRaw;
 
