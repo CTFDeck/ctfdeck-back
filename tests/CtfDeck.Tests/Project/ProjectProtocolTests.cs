@@ -209,12 +209,14 @@ public class ProjectProtocolTests
     {
         var messageId = Guid.NewGuid();
         var writeUpId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
         var folderId = Guid.NewGuid();
 
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpMove);
         writer.WriteGuid(messageId);
         writer.WriteGuid(writeUpId);
+        writer.WriteGuid(projectId);
         writer.WriteGuid(folderId);
         var data = writer.ToArray();
 
@@ -222,6 +224,7 @@ public class ProjectProtocolTests
 
         request.MessageId.Should().Be(messageId);
         request.WriteUpId.Should().Be(writeUpId);
+        request.ProjectId.Should().Be(projectId);
         request.FolderId.Should().Be(folderId);
     }
 
@@ -230,16 +233,19 @@ public class ProjectProtocolTests
     {
         var messageId = Guid.NewGuid();
         var writeUpId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
 
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpMove);
         writer.WriteGuid(messageId);
         writer.WriteGuid(writeUpId);
+        writer.WriteGuid(projectId);
         writer.WriteGuid(Guid.Empty);
         var data = writer.ToArray();
 
         var request = new WriteUpMoveRequest(data);
 
+        request.ProjectId.Should().Be(projectId);
         request.FolderId.Should().Be(Guid.Empty);
     }
 
