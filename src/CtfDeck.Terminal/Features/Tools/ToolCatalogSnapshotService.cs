@@ -35,6 +35,7 @@ public class ToolCatalogSnapshotService
                 Category = tool.Category,
                 Kind = tool.Kind,
                 Description = tool.Description,
+                CommandTemplate = tool.CommandTemplate,
                 ExternalUrl = tool.ExternalUrl,
                 IsInstalled = status?.IsInstalled ?? false,
                 IsInstallable = status?.IsInstallable ?? false,

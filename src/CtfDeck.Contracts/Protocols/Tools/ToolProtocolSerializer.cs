@@ -71,6 +71,11 @@ public static class ToolProtocolSerializer
             writer.WriteString(tool.Category);
             writer.WriteString(tool.Kind);
             writer.WriteString(tool.Description);
+            writer.WriteByte((byte)(tool.CommandTemplate is not null ? 1 : 0));
+            if (tool.CommandTemplate is not null)
+            {
+                writer.WriteString(tool.CommandTemplate);
+            }
             writer.WriteString(tool.ExternalUrl ?? string.Empty);
             writer.WriteByte((byte)(tool.IsInstalled ? 1 : 0));
             writer.WriteByte((byte)(tool.IsInstallable ? 1 : 0));

@@ -9,7 +9,6 @@ public readonly ref struct ToolInventoryRequest
 
     public ToolInventoryRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId]
         MessageId = new Guid(data.Slice(1, 16));
     }
 }
@@ -21,7 +20,6 @@ public class ToolInstallRequest
 
     public ToolInstallRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B count][[4B len][toolId]]*
         MessageId = new Guid(data.Slice(1, 16));
 
         var count = BitConverter.ToInt32(data.Slice(17, 4));

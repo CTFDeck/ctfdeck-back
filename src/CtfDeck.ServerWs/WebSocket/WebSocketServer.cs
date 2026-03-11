@@ -227,8 +227,9 @@ public class WebSocketServer
         try
         {
             var snapshot = await _toolCatalogSnapshotService.GetSnapshotAsync(_cancellationTokenSource.Token);
+
             var payload = ToolProtocolSerializer.SerializeCatalogSnapshot(snapshot);
-            Console.WriteLine("Sending initial tool catalog snapshot to client {ctx.ClientId}, size={payload.Length} bytes");
+            Console.WriteLine($"Sending initial tool catalog snapshot to client {ctx.ClientId}, size={payload.Length} bytes");
 
             await ctx.Sender.SendAsync(payload);
         }

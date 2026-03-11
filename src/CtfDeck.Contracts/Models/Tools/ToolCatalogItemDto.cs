@@ -7,6 +7,7 @@ public class ToolCatalogItemDto
     public required string Category { get; set; }
     public required string Kind { get; set; }
     public required string Description { get; set; }
+    public string? CommandTemplate { get; set; }
     public string? ExternalUrl { get; set; }
     public required bool IsInstalled { get; set; }
     public required bool IsInstallable { get; set; }
