@@ -30,6 +30,11 @@ using CtfDeck.Terminal.Features.Aliases;
 using CtfDeck.Terminal.Handlers;
 using CtfDeck.Terminal.Terminal.Shell;
 
+using CtfDeck.Abstractions.Ports.Tools;
+using CtfDeck.Terminal.Features.Tools;
+
+using CtfDeck.Contracts.Protocols.Tools;
+
 namespace CtfDeck.ServerWs.WebSocket;
 
 public class WebSocketServer
@@ -51,6 +56,8 @@ public class WebSocketServer
 
     private readonly List<MessageHandlerBase> _messageHandlers;
 
+    private readonly ToolCatalogSnapshotService _toolCatalogSnapshotService;
+
     public WebSocketServer(string host = "localhost", int port = 8080, bool useInMemoryDb = false)
     {
         _httpListener = new HttpListener();
@@ -65,6 +72,15 @@ public class WebSocketServer
         IWriteUpRepository writeUpRepository = new WriteUpRepository(_dbContext);
         IMediaRepository mediaRepository = new MediaRepository(_dbContext);
         IProjectRepository projectRepository = new ProjectRepository(_dbContext);
+
+        IToolCatalogProvider toolCatalogProvider = new ToolCatalogService();
+        IToolPathResolver toolPathResolver = new ToolPathResolver();
+        IToolDetector toolDetector = new ToolDetectionService(toolCatalogProvider, toolPathResolver);
+        var archiveExtractor = new ArchiveExtractor();
+        IToolInstaller toolInstaller = new ToolInstallationService(toolPathResolver, archiveExtractor);
+        IToolInstallationCoordinator toolInstallationCoordinator =
+            new ToolInstallationCoordinator(toolCatalogProvider, toolDetector, toolInstaller);
+        _toolCatalogSnapshotService = new ToolCatalogSnapshotService(toolCatalogProvider, toolDetector);
 
         ICommandAliasRepository aliasRepository = new CommandAliasRepository(_dbContext);
         _commandAliasService = new CommandAliasService(aliasRepository);
@@ -89,7 +105,8 @@ public class WebSocketServer
             new CustomScriptMessageHandler(customScriptService),
             new WriteUpMessageHandler(writeUpService),
             new MediaMessageHandler(mediaService),
-            new ProjectMessageHandler(projectService)
+            new ProjectMessageHandler(projectService),
+            new ToolMessageHandler(toolInstallationCoordinator)
         ];
     }
 
@@ -205,6 +222,23 @@ public class WebSocketServer
         }
     }
 
+    private async Task SendInitialToolCatalogAsync(ClientContext ctx)
+    {
+        try
+        {
+            var snapshot = await _toolCatalogSnapshotService.GetSnapshotAsync(_cancellationTokenSource.Token);
+
+            var payload = ToolProtocolSerializer.SerializeCatalogSnapshot(snapshot);
+            Console.WriteLine($"Sending initial tool catalog snapshot to client {ctx.ClientId}, size={payload.Length} bytes");
+
+            await ctx.Sender.SendAsync(payload);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to send initial tool catalog to client {ctx.ClientId}: {ex.Message}");
+        }
+    }
+
     private async Task HandleWebSocketConnectionAsync(HttpListenerContext context)
     {
         WebSocketContext? webSocketContext = null;
@@ -221,6 +255,7 @@ public class WebSocketServer
                 _clients.TryAdd(clientId, ctx);
 
                 Console.WriteLine($"Client {clientId} connected from {context.Request.RemoteEndPoint}");
+                await SendInitialToolCatalogAsync(ctx);
 
                 await HandleClientMessagesAsync(ctx);
             }
@@ -316,7 +351,11 @@ public class WebSocketServer
 
                                 foreach (var handler in _messageHandlers)
                                 {
-                                    if (await handler.TryHandleAsync(clientId, message, ctx.Sender.SendAsync, _cancellationTokenSource.Token))
+                                    if (await handler.TryHandleAsync(
+                                            clientId,
+                                            message,
+                                            payload => ctx.Sender.SendAsync(payload, _cancellationTokenSource.Token),
+                                            _cancellationTokenSource.Token))
                                     {
                                         handled = true;
                                         break;

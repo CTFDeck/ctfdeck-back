@@ -7,31 +7,43 @@ public abstract class MessageHandlerBase
     protected abstract bool CanHandle(MessageType type);
     protected abstract byte[] Dispatch(string clientId, MessageType type, ReadOnlySpan<byte> data);
     protected abstract byte[] SerializeError(Guid messageId, string error);
+    protected Func<byte[], Task>? CurrentSendAsync { get; private set; }
+    protected CancellationToken CurrentCancellationToken { get; private set; }
 
     public async Task<bool> TryHandleAsync(
         string clientId,
-        ReadOnlyMemory<byte> data,
-        Func<byte[], CancellationToken, Task> sendAsync,
+        ReadOnlyMemory<byte> message,
+        Func<byte[], Task> sendAsync,
         CancellationToken cancellationToken)
     {
-        if (data.Length == 0) return false;
+        var type = (MessageType)message.Span[0];
 
-        var type = (MessageType)data.Span[0];
-        if (!CanHandle(type)) return false;
+        if (!CanHandle(type))
+            return false;
 
-        byte[] response;
+        Guid messageId = Guid.Empty;
 
         try
         {
-            response = Dispatch(clientId, type, data.Span);
+            CurrentSendAsync = sendAsync;
+            CurrentCancellationToken = cancellationToken;
+
+            var response = Dispatch(clientId, type, message.Span);
+
+            if (response.Length > 0)
+                await sendAsync(response);
+
+            return true;
         }
         catch (Exception ex)
         {
-            var msgId = data.Length >= 17 ? new Guid(data.Span.Slice(1, 16)) : Guid.Empty;
-            response = SerializeError(msgId, ex.Message);
+            await sendAsync(SerializeError(messageId, ex.Message));
+            return true;
         }
-
-        await sendAsync(response, cancellationToken);
-        return true;
+        finally
+        {
+            CurrentSendAsync = null;
+            CurrentCancellationToken = default;
+        }
     }
 }

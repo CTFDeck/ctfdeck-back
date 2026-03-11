@@ -115,7 +115,16 @@ public enum MessageType : byte
 
     // Project content responses (server → client)
     ProjectListSessionsResult = 111,
-    ProjectListWriteUpsResult = 113
+    ProjectListWriteUpsResult = 113,
+
+    // Tools management
+    ToolInventoryRequest = 120,
+    ToolInventoryResult = 121,
+    ToolInstallRequest = 122,
+    ToolInstallAccepted = 123,
+    ToolInstallProgress = 124,
+    ToolOperationError = 125,
+    ToolCatalogSnapshot = 126,
 }
 
 /// <summary>
