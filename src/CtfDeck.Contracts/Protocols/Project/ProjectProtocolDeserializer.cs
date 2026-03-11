@@ -172,14 +172,16 @@ public readonly ref struct WriteUpMoveRequest
 {
     public readonly Guid MessageId;
     public readonly Guid WriteUpId;
+    public readonly Guid ProjectId;
     public readonly Guid FolderId;
 
     public WriteUpMoveRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B writeUpId][16B folderId]
+        // Format: [1B type][16B msgId][16B writeUpId][16B projectId][16B folderId]
         MessageId = new Guid(data.Slice(1, 16));
         WriteUpId = new Guid(data.Slice(17, 16));
-        FolderId = new Guid(data.Slice(33, 16));
+        ProjectId = new Guid(data.Slice(33, 16));
+        FolderId = new Guid(data.Slice(49, 16));
     }
 }
 

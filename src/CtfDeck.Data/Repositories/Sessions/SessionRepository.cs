@@ -216,7 +216,8 @@ public sealed class SessionRepository : ISessionRepository
                     UpdatedAt = s.UpdatedAt,
                     HistoryCount = s.History?.Count ?? 0,
                     TargetCount = s.Targets?.Count ?? 0,
-                    ProjectId = s.ProjectId
+                    ProjectId = s.ProjectId,
+                    FolderId = s.FolderId
                 })
                 .ToList();
                 

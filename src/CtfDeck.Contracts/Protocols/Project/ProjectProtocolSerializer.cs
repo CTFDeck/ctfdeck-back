@@ -146,12 +146,14 @@ public static class ProjectProtocolSerializer
         writer.WriteInt32(meta.HistoryCount);
         writer.WriteInt32(meta.TargetCount);
         writer.WriteGuid(meta.ProjectId ?? Guid.Empty);
+        writer.WriteGuid(meta.FolderId ?? Guid.Empty);
     }
 
     private static void WriteWriteUpMetadata(PooledBufferWriter writer, WriteUpMetadataDto writeUp)
     {
         writer.WriteGuid(writeUp.Id);
         writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
+        writer.WriteGuid(writeUp.ProjectId ?? Guid.Empty);
         writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
         writer.WriteString(writeUp.Name);
         writer.WriteInt64(writeUp.CreatedAt.Ticks);

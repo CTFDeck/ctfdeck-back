@@ -106,7 +106,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleWriteUpMove(ReadOnlySpan<byte> data)
     {
         var request = new WriteUpMoveRequest(data);
-        var success = _projectService.MoveWriteUp(request.WriteUpId, request.FolderId);
+        var success = _projectService.MoveWriteUp(request.WriteUpId, request.ProjectId, request.FolderId);
         return ProjectProtocolSerializer.SerializeWriteUpMoveResult(request.MessageId, success);
     }
 

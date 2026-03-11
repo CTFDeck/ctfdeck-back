@@ -48,6 +48,7 @@ public static class WriteUpProtocolSerializer
         {
             writer.WriteGuid(writeUp.Id);
             writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
+            writer.WriteGuid(writeUp.ProjectId ?? Guid.Empty);
             writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
             writer.WriteString(writeUp.Name);
             writer.WriteString(writeUp.Content);
@@ -65,6 +66,7 @@ public static class WriteUpProtocolSerializer
     {
         writer.WriteGuid(writeUp.Id);
         writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
+        writer.WriteGuid(writeUp.ProjectId ?? Guid.Empty);
         writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
         writer.WriteString(writeUp.Name);
         writer.WriteInt64(writeUp.CreatedAt.Ticks);

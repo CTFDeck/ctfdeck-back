@@ -118,6 +118,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
+    public bool SetProjectAndFolderId(Guid writeUpId, Guid? projectId, Guid? folderId)
+    {
+        lock (_lock)
+        {
+            var model = _context.WriteUps.FindById(writeUpId);
+            if (model == null) return false;
+
+            model.ProjectId = projectId;
+            model.FolderId = folderId;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.WriteUps.Update(model);
+        }
+    }
+
     public void ClearFolderId(Guid folderId)
     {
         lock (_lock)
@@ -131,12 +146,26 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
+    public void ClearProjectId(Guid projectId)
+    {
+        lock (_lock)
+        {
+            var writeUps = _context.WriteUps.Find(w => w.ProjectId == projectId).ToList();
+            foreach (var writeUp in writeUps)
+            {
+                writeUp.ProjectId = null;
+                writeUp.FolderId = null;
+                _context.WriteUps.Update(writeUp);
+            }
+        }
+    }
+
     public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false)
     {
         lock (_lock)
         {
             var query = unassignedOnly 
-                ? _context.WriteUps.Find(w => w.FolderId == null)
+                ? _context.WriteUps.Find(w => w.ProjectId == null)
                 : _context.WriteUps.FindAll();
                 
             var totalCount = query.Count();
@@ -156,6 +185,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
     {
         Id = m.Id,
         SessionId = m.SessionId,
+        ProjectId = m.ProjectId,
         FolderId = m.FolderId,
         Name = m.Name ?? "",
         Content = m.Content ?? "",
@@ -167,6 +197,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
     {
         Id = m.Id,
         SessionId = m.SessionId,
+        ProjectId = m.ProjectId,
         FolderId = m.FolderId,
         Name = m.Name ?? "",
         CreatedAt = m.CreatedAt,

@@ -50,6 +50,7 @@ public class ProjectService
         var folderIds = _projectRepository.GetFolderIds(id);
 
         _sessionRepository.ClearProjectId(id);
+        _writeUpRepository.ClearProjectId(id);
 
         foreach (var folderId in folderIds)
         {
@@ -78,10 +79,11 @@ public class ProjectService
         return _sessionRepository.SetProjectAndFolderId(sessionId, actualProjectId, actualFolderId);
     }
 
-    public bool MoveWriteUp(Guid writeUpId, Guid folderId)
+    public bool MoveWriteUp(Guid writeUpId, Guid projectId, Guid folderId)
     {
+        var actualProjectId = projectId == Guid.Empty ? (Guid?)null : projectId;
         var actualFolderId = folderId == Guid.Empty ? (Guid?)null : folderId;
-        return _writeUpRepository.SetFolderId(writeUpId, actualFolderId);
+        return _writeUpRepository.SetProjectAndFolderId(writeUpId, actualProjectId, actualFolderId);
     }
 
     public (List<SessionMetadataDto> Items, int TotalCount) ListSessions(Guid projectId, int offset = 0, int limit = 50)
