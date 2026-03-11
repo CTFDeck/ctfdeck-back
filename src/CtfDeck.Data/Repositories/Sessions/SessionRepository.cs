@@ -44,11 +44,14 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
-    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
+    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false)
     {
         lock (_lock)
         {
-            var query = _context.Sessions.FindAll();
+            var query = unassignedOnly 
+                ? _context.Sessions.Find(s => s.ProjectId == null)
+                : _context.Sessions.FindAll();
+                
             var totalCount = query.Count();
 
             var items = query

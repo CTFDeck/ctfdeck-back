@@ -6,7 +6,7 @@ public interface ISessionRepository
 {
     SessionDto Create(string name);
     SessionDto? GetById(Guid id);
-    (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50);
+    (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false);
     bool Update(Guid id, string name, string description);
     bool Delete(Guid id);
 

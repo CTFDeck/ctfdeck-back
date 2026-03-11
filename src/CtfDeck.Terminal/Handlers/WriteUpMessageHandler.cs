@@ -57,7 +57,7 @@ public sealed class WriteUpMessageHandler : MessageHandlerBase
     {
         var request = new WriteUpListRequest(data);
         var result = request.SessionId == Guid.Empty 
-            ? _writeUpService.GetAllMetadata(request.Offset, request.Limit) 
+            ? _writeUpService.GetAllMetadata(request.Offset, request.Limit, request.UnassignedOnly) 
             : _writeUpService.GetBySessionId(request.SessionId, request.Offset, request.Limit);
         return WriteUpProtocolSerializer.SerializeListResult(request.MessageId, result.Items, result.TotalCount);
     }

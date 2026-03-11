@@ -30,9 +30,9 @@ public class WriteUpService
     public bool Delete(Guid id)
         => _repository.Delete(id);
 
-    public (List<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
+    public (List<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false)
     {
-        var result = _repository.GetAllMetadata(offset, limit);
+        var result = _repository.GetAllMetadata(offset, limit, unassignedOnly);
         return (result.Items.ToList(), result.TotalCount);
     }
 }

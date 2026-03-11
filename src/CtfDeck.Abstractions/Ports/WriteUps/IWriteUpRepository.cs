@@ -13,5 +13,5 @@ public interface IWriteUpRepository
     (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetByFolderId(Guid folderId, int offset = 0, int limit = 50);
     bool SetFolderId(Guid writeUpId, Guid? folderId);
     void ClearFolderId(Guid folderId);
-    (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50);
+    (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false);
 }

@@ -49,13 +49,15 @@ public readonly ref struct SessionListRequest
     public readonly Guid MessageId;
     public readonly int Offset;
     public readonly int Limit;
+    public readonly bool UnassignedOnly;
 
     public SessionListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B offset][4B limit]
+        // Format: [1B type][16B msgId][4B offset][4B limit][1B unassignedOnly]
         MessageId = new Guid(data.Slice(1, 16));
         Offset = BitConverter.ToInt32(data.Slice(17, 4));
         Limit = BitConverter.ToInt32(data.Slice(21, 4));
+        UnassignedOnly = data.Length > 25 && data[25] == 1;
     }
 }
 

@@ -131,11 +131,14 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
-    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false)
     {
         lock (_lock)
         {
-            var query = _context.WriteUps.FindAll();
+            var query = unassignedOnly 
+                ? _context.WriteUps.Find(w => w.FolderId == null)
+                : _context.WriteUps.FindAll();
+                
             var totalCount = query.Count();
 
             var items = query
