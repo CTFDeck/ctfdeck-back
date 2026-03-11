@@ -58,7 +58,7 @@ public class WebSocketIntegrationTests : IDisposable
     {
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
-        
+
         var messageId = Guid.Empty;
 
         while (true)
