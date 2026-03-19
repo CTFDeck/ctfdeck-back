@@ -32,7 +32,7 @@ Business logic layer. Handles terminal execution, features, and message handlers
 - **`Features/Scripts/`**: Custom script CRUD wrapper.
 - **`Features/WriteUps/`**: Write-up CRUD service.
 - **`Features/Media/`**: Media CRUD service.
-- **`Features/Projects/`**: Project CRUD, folder management, session assignment, write-up folder assignment.
+- **`Features/Projects/`**: Project CRUD, folder management, session assignment, write-up folder assignment, import/export.
 - **`Handlers/`**: Message handler pipeline (`SessionMessageHandler`, `CustomScriptMessageHandler`, `WriteUpMessageHandler`, `MediaMessageHandler`, `ProjectMessageHandler`).
 
 ### CtfDeck.Contracts
@@ -44,7 +44,7 @@ Binary protocol, DTOs, and protocol serializers/deserializers.
 - **`Models/Scripts/`**: CustomScript DTOs.
 - **`Models/WriteUps/`**: WriteUp DTOs (`WriteUpDto`, `WriteUpMetadataDto`).
 - **`Models/Media/`**: Media DTOs (`MediaDto`, `MediaMetadataDto`).
-- **`Models/Projects/`**: Project DTOs (`ProjectDto`, `ProjectMetadataDto`, `ProjectFolderDto`).
+- **`Models/Projects/`**: Project DTOs (`ProjectDto`, `ProjectMetadataDto`, `ProjectFolderDto`, `ProjectExportDto`, `MediaExportDto`).
 - **`Protocols/Session/`**: Session protocol serializer/deserializer.
 - **`Protocols/CustomScript/`**: Custom script protocol serializer/deserializer.
 - **`Protocols/WriteUp/`**: Write-up protocol serializer/deserializer.

@@ -103,6 +103,38 @@ For more details, see [Troubleshooting Guide](TROUBLESHOOTING.md).
 
 ---
 
+## Import / Export
+
+CTFDeck supports exporting a complete project to a JSON file and re-importing it later (or on another machine).
+
+### Export a project
+
+Via the test client CLI:
+```
+/project-export <projectId> C:\path\to\export.json
+```
+
+The export includes:
+- The project and its folders
+- All sessions linked to the project (with full history and targets)
+- All write-ups (from project folders and project sessions)
+- All media referenced in write-up content (`media://{uuid}` patterns), with binary data as base64
+
+### Import a project
+
+```
+/project-import C:\path\to\export.json
+```
+
+**Notes:**
+- All original IDs are preserved.
+- If the project ID (or any session/write-up/media ID) already exists in the database, the import is rejected.
+- The export file must be version 1.
+
+For the full JSON schema, see [Protocol Documentation](PROTOCOL.md#json-export-schema).
+
+---
+
 ## Protocol Documentation
 
 The backend uses a specific binary protocol for communication. For detailed information on message formats, UUID correlation, and serialization, see the [Protocol Documentation](PROTOCOL.md).

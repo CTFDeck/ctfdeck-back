@@ -149,6 +149,10 @@ All message types (1-byte prefix):
 | ProjectListSessionsResult | 111 | Server → Client | Response to ProjectListSessions |
 | ProjectListWriteUps | 112 | Client → Server | List write-ups for a folder |
 | ProjectListWriteUpsResult | 113 | Server → Client | Response to ProjectListWriteUps |
+| ProjectExport | 114 | Client → Server | Export project to JSON file |
+| ProjectExportResult | 115 | Server → Client | Response to ProjectExport |
+| ProjectImport | 116 | Client → Server | Import project from JSON file |
+| ProjectImportResult | 117 | Server → Client | Response to ProjectImport |
 
 ## Error Codes
 
@@ -1347,6 +1351,10 @@ The Project Management Protocol extends the base protocol to support organizing 
 | ProjectListSessionsResult | 111 | Server → Client | Response to ProjectListSessions |
 | ProjectListWriteUps | 112 | Client → Server | List write-ups for a folder |
 | ProjectListWriteUpsResult | 113 | Server → Client | Response to ProjectListWriteUps |
+| ProjectExport | 114 | Client → Server | Export project to JSON file |
+| ProjectExportResult | 115 | Server → Client | Response to ProjectExport |
+| ProjectImport | 116 | Client → Server | Import project from JSON file |
+| ProjectImportResult | 117 | Server → Client | Response to ProjectImport |
 
 ### Request Message Formats
 
@@ -1460,6 +1468,35 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 1      | 16   | bytes[16] | Message ID (UUID)
 17     | 16   | bytes[16] | Folder ID (UUID)
 ```
+
+#### ProjectExport
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (114)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 16   | bytes[16] | Project ID (UUID)
+33     | 4    | int32     | Path length (P)
+37     | P    | bytes[]   | File path (UTF-8)
+```
+
+**Notes:**
+- The server writes the project data as a JSON file to the specified filesystem path.
+- The export includes the project, its folders, all linked sessions (with history and targets), all write-ups (from folders and sessions), and all media referenced in write-up content via `media://{uuid}` patterns.
+- Media binary data is encoded as base64 in the JSON.
+
+#### ProjectImport
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (116)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Path length (P)
+21     | P    | bytes[]   | File path (UTF-8)
+```
+
+**Notes:**
+- The server reads and parses a JSON export file from the specified filesystem path.
+- All original IDs are preserved. If the project ID already exists in the database, the import is rejected.
+- Collision checks are performed for all entity IDs (project, sessions, write-ups, media).
 
 ### Response Message Formats
 
@@ -1594,6 +1631,23 @@ OFFSET | SIZE | TYPE        | DESCRIPTION
 21     | ...  | Metadata[]  | WriteUpMetadata entries (same format as WriteUpListResult)
 ```
 
+#### ProjectExportResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (115)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+```
+
+#### ProjectImportResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (117)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = true, 0 = false)
+18     | 16   | bytes[16] | Imported project ID (UUID)
+```
+
 #### ProjectOperationError
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
@@ -1602,6 +1656,82 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 17     | 4    | int32     | Error length (E)
 21     | E    | bytes[]   | Error message (UTF-8)
 ```
+
+### JSON Export Schema
+
+The export file uses the following JSON structure (version 1):
+
+```json
+{
+  "version": 1,
+  "exportedAt": "2026-03-19T14:30:00Z",
+  "project": {
+    "id": "guid",
+    "name": "string",
+    "description": "string",
+    "createdAt": "datetime",
+    "updatedAt": "datetime",
+    "folders": [
+      { "id": "guid", "name": "string", "isSystem": true }
+    ]
+  },
+  "sessions": [
+    {
+      "id": "guid",
+      "name": "string",
+      "description": "string",
+      "createdAt": "datetime",
+      "updatedAt": "datetime",
+      "projectId": "guid",
+      "history": [
+        {
+          "id": "guid",
+          "timestamp": "datetime",
+          "workingDirectory": "string",
+          "command": "string",
+          "output": "string",
+          "exitCode": 0
+        }
+      ],
+      "targets": [
+        {
+          "id": "guid",
+          "address": "string",
+          "port": null,
+          "name": "string",
+          "description": "string",
+          "type": 1
+        }
+      ]
+    }
+  ],
+  "writeUps": [
+    {
+      "id": "guid",
+      "sessionId": "guid",
+      "folderId": "guid-or-null",
+      "name": "string",
+      "content": "string",
+      "createdAt": "datetime",
+      "updatedAt": "datetime"
+    }
+  ],
+  "media": [
+    {
+      "id": "guid",
+      "fileName": "string",
+      "mimeType": "string",
+      "data": "base64-string",
+      "createdAt": "datetime"
+    }
+  ]
+}
+```
+
+**Notes:**
+- The `version` field allows future schema evolution.
+- Media `data` is base64-encoded binary.
+- Media references are discovered by parsing write-up content for `media://{uuid}` patterns.
 
 ### Storage
 
@@ -1626,4 +1756,8 @@ Projects are persisted using LiteDB:
 | Cannot delete system folder | Attempted to delete "Report" | System folders are protected |
 | Cannot rename system folder | Attempted to rename "Report" | System folders are protected |
 | Session not found | Invalid session ID on assign | Use SessionList to get valid IDs |
+| Project already exists | Import with existing project ID | Delete existing project first or use a different export |
+| File not found | Import path does not exist | Check the file path |
+| Unsupported export version | Export file version != 1 | Use a compatible export file |
+| Entity already exists | Session/WriteUp/Media ID collision on import | Entities from previous import still in database |
 | Database locked | Concurrent access | Retry operation |
