@@ -339,6 +339,8 @@ public class ProjectProtocolTests
         ProjectProtocolDeserializer.IsProjectMessage(MessageType.WriteUpMove).Should().BeTrue();
         ProjectProtocolDeserializer.IsProjectMessage(MessageType.ProjectListSessions).Should().BeTrue();
         ProjectProtocolDeserializer.IsProjectMessage(MessageType.ProjectListWriteUps).Should().BeTrue();
+        ProjectProtocolDeserializer.IsProjectMessage(MessageType.ProjectExport).Should().BeTrue();
+        ProjectProtocolDeserializer.IsProjectMessage(MessageType.ProjectImport).Should().BeTrue();
 
         ProjectProtocolDeserializer.IsProjectMessage(MessageType.SessionCreate).Should().BeFalse();
         ProjectProtocolDeserializer.IsProjectMessage(MessageType.WriteUpCreate).Should().BeFalse();
@@ -399,6 +401,74 @@ public class ProjectProtocolTests
         resultMsgId.Should().Be(messageId);
         var count = BitConverter.ToInt32(bytes.AsSpan(17, 4));
         count.Should().Be(2);
+    }
+
+    [Fact]
+    public void ProjectExportRequest_ShouldDeserializeCorrectly()
+    {
+        var messageId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var path = @"C:\Users\test\export.json";
+
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectExport);
+        writer.WriteGuid(messageId);
+        writer.WriteGuid(projectId);
+        writer.WriteString(path);
+        var data = writer.ToArray();
+
+        var request = new ProjectExportRequest(data);
+
+        request.MessageId.Should().Be(messageId);
+        request.ProjectId.Should().Be(projectId);
+        request.Path.Should().Be(path);
+    }
+
+    [Fact]
+    public void ProjectImportRequest_ShouldDeserializeCorrectly()
+    {
+        var messageId = Guid.NewGuid();
+        var path = @"C:\Users\test\export.json";
+
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectImport);
+        writer.WriteGuid(messageId);
+        writer.WriteString(path);
+        var data = writer.ToArray();
+
+        var request = new ProjectImportRequest(data);
+
+        request.MessageId.Should().Be(messageId);
+        request.Path.Should().Be(path);
+    }
+
+    [Fact]
+    public void SerializeExportResult_ShouldRoundTrip()
+    {
+        var messageId = Guid.NewGuid();
+
+        var bytes = ProjectProtocolSerializer.SerializeExportResult(messageId, true);
+
+        bytes[0].Should().Be((byte)MessageType.ProjectExportResult);
+        var resultMsgId = new Guid(bytes.AsSpan(1, 16));
+        resultMsgId.Should().Be(messageId);
+        bytes[17].Should().Be(1);
+    }
+
+    [Fact]
+    public void SerializeImportResult_ShouldRoundTrip()
+    {
+        var messageId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+
+        var bytes = ProjectProtocolSerializer.SerializeImportResult(messageId, true, projectId);
+
+        bytes[0].Should().Be((byte)MessageType.ProjectImportResult);
+        var resultMsgId = new Guid(bytes.AsSpan(1, 16));
+        resultMsgId.Should().Be(messageId);
+        bytes[17].Should().Be(1);
+        var resultProjectId = new Guid(bytes.AsSpan(18, 16));
+        resultProjectId.Should().Be(projectId);
     }
 
     [Fact]

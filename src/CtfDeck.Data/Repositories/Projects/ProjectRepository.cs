@@ -175,6 +175,29 @@ public sealed class ProjectRepository : IProjectRepository
         }
     }
 
+    public void Insert(ProjectDto project)
+    {
+        var model = new Project
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            CreatedAt = project.CreatedAt,
+            UpdatedAt = project.UpdatedAt,
+            Folders = project.Folders.Select(f => new ProjectFolder
+            {
+                Id = f.Id,
+                Name = f.Name,
+                IsSystem = f.IsSystem
+            }).ToList()
+        };
+
+        lock (_lock)
+        {
+            _context.Projects.Insert(model);
+        }
+    }
+
     private static ProjectDto ToDto(Project p) => new()
     {
         Id = p.Id,

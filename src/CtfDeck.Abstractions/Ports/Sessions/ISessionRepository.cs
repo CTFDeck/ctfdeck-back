@@ -20,4 +20,5 @@ public interface ISessionRepository
     IEnumerable<SessionMetadataDto> GetByProjectId(Guid projectId);
     bool SetProjectId(Guid sessionId, Guid? projectId);
     void ClearProjectId(Guid projectId);
+    void Insert(SessionDto session);
 }

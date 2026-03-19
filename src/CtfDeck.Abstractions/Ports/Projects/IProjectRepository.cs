@@ -13,4 +13,5 @@ public interface IProjectRepository
     bool DeleteFolder(Guid projectId, Guid folderId);
     bool RenameFolder(Guid projectId, Guid folderId, string name);
     List<Guid> GetFolderIds(Guid projectId);
+    void Insert(ProjectDto project);
 }

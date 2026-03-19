@@ -117,6 +117,25 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
+    public void Insert(WriteUpDto writeUp)
+    {
+        var model = new WriteUp
+        {
+            Id = writeUp.Id,
+            SessionId = writeUp.SessionId,
+            FolderId = writeUp.FolderId,
+            Name = writeUp.Name,
+            Content = writeUp.Content,
+            CreatedAt = writeUp.CreatedAt,
+            UpdatedAt = writeUp.UpdatedAt
+        };
+
+        lock (_lock)
+        {
+            _context.WriteUps.Insert(model);
+        }
+    }
+
     private static WriteUpDto ToDto(WriteUp m) => new()
     {
         Id = m.Id,

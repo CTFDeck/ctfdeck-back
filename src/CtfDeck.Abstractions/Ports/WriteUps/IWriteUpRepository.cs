@@ -13,4 +13,5 @@ public interface IWriteUpRepository
     List<WriteUpMetadataDto> GetByFolderId(Guid folderId);
     bool SetFolderId(Guid writeUpId, Guid? folderId);
     void ClearFolderId(Guid folderId);
+    void Insert(WriteUpDto writeUp);
 }

@@ -107,6 +107,19 @@ public static class ProjectProtocolSerializer
         return writer.ToArray();
     }
 
+    public static byte[] SerializeExportResult(Guid messageId, bool success)
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.ProjectExportResult, messageId, success);
+
+    public static byte[] SerializeImportResult(Guid messageId, bool success, Guid projectId)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectImportResult);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        writer.WriteGuid(projectId);
+        return writer.ToArray();
+    }
+
     public static byte[] SerializeError(Guid messageId, string error)
         => BinaryProtocolSerializer.SerializeError(MessageType.ProjectOperationError, messageId, error);
 

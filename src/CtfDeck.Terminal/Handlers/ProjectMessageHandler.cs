@@ -35,6 +35,8 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
             MessageType.WriteUpMove => HandleWriteUpMove(data),
             MessageType.ProjectListSessions => HandleListSessions(data),
             MessageType.ProjectListWriteUps => HandleListWriteUps(data),
+            MessageType.ProjectExport => HandleExport(data),
+            MessageType.ProjectImport => HandleImport(data),
             _ => throw new InvalidOperationException($"Unknown project message type: {type}")
         };
     }
@@ -122,5 +124,19 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
         var request = new ProjectListWriteUpsRequest(data);
         var writeUps = _projectService.ListWriteUps(request.FolderId);
         return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, writeUps);
+    }
+
+    private byte[] HandleExport(ReadOnlySpan<byte> data)
+    {
+        var request = new ProjectExportRequest(data);
+        _projectService.ExportToFile(request.ProjectId, request.Path);
+        return ProjectProtocolSerializer.SerializeExportResult(request.MessageId, true);
+    }
+
+    private byte[] HandleImport(ReadOnlySpan<byte> data)
+    {
+        var request = new ProjectImportRequest(data);
+        var projectId = _projectService.ImportFromFile(request.Path);
+        return ProjectProtocolSerializer.SerializeImportResult(request.MessageId, true, projectId);
     }
 }

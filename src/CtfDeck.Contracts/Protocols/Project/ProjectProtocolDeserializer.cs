@@ -199,12 +199,49 @@ public readonly ref struct ProjectListWriteUpsRequest
     }
 }
 
+public class ProjectExportRequest
+{
+    public Guid MessageId { get; }
+    public Guid ProjectId { get; }
+    public string Path { get; }
+
+    public ProjectExportRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId][16B projectId][4B pathLen][path]
+        MessageId = new Guid(data.Slice(1, 16));
+        ProjectId = new Guid(data.Slice(17, 16));
+
+        var offset = 33;
+        var pathLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        Path = Encoding.UTF8.GetString(data.Slice(offset, pathLen));
+    }
+}
+
+public class ProjectImportRequest
+{
+    public Guid MessageId { get; }
+    public string Path { get; }
+
+    public ProjectImportRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId][4B pathLen][path]
+        MessageId = new Guid(data.Slice(1, 16));
+
+        var offset = 17;
+        var pathLen = BitConverter.ToInt32(data.Slice(offset, 4));
+        offset += 4;
+        Path = Encoding.UTF8.GetString(data.Slice(offset, pathLen));
+    }
+}
+
 public static class ProjectProtocolDeserializer
 {
     public static bool IsProjectMessage(MessageType type)
     {
         return (type >= MessageType.ProjectCreate && type <= MessageType.ProjectAssignSession)
             || type == MessageType.WriteUpMove
-            || (type >= MessageType.ProjectListSessions && type <= MessageType.ProjectListWriteUps);
+            || (type >= MessageType.ProjectListSessions && type <= MessageType.ProjectListWriteUps)
+            || (type >= MessageType.ProjectExport && type <= MessageType.ProjectImport);
     }
 }
