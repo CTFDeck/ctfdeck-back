@@ -8,6 +8,7 @@ public class Session
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public Guid? ProjectId { get; set; }
+    public Guid? FolderId { get; set; }
     public List<HistoryEntry> History { get; set; } = new();
     public List<SessionTarget> Targets { get; set; } = new();
 }

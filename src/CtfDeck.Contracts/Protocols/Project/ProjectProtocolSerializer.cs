@@ -32,7 +32,7 @@ public static class ProjectProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeListResult(Guid messageId, IEnumerable<ProjectMetadataDto> projects)
+    public static byte[] SerializeListResult(Guid messageId, IEnumerable<ProjectMetadataDto> projects, int totalCount)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.ProjectListResult);
@@ -40,6 +40,7 @@ public static class ProjectProtocolSerializer
 
         var list = projects.ToList();
         writer.WriteInt32(list.Count);
+        writer.WriteInt32(totalCount);
 
         foreach (var meta in list)
         {
@@ -77,12 +78,13 @@ public static class ProjectProtocolSerializer
     public static byte[] SerializeWriteUpMoveResult(Guid messageId, bool success)
         => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.WriteUpMoveResult, messageId, success);
 
-    public static byte[] SerializeListSessionsResult(Guid messageId, List<SessionMetadataDto> sessions)
+    public static byte[] SerializeListSessionsResult(Guid messageId, List<SessionMetadataDto> sessions, int totalCount)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.ProjectListSessionsResult);
         writer.WriteGuid(messageId);
         writer.WriteInt32(sessions.Count);
+        writer.WriteInt32(totalCount);
 
         foreach (var meta in sessions)
         {
@@ -92,12 +94,13 @@ public static class ProjectProtocolSerializer
         return writer.ToArray();
     }
 
-    public static byte[] SerializeListWriteUpsResult(Guid messageId, List<WriteUpMetadataDto> writeUps)
+    public static byte[] SerializeListWriteUpsResult(Guid messageId, List<WriteUpMetadataDto> writeUps, int totalCount)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.ProjectListWriteUpsResult);
         writer.WriteGuid(messageId);
         writer.WriteInt32(writeUps.Count);
+        writer.WriteInt32(totalCount);
 
         foreach (var writeUp in writeUps)
         {
@@ -141,6 +144,7 @@ public static class ProjectProtocolSerializer
     private static void WriteProjectFolder(PooledBufferWriter writer, ProjectFolderDto folder)
     {
         writer.WriteGuid(folder.Id);
+        writer.WriteGuid(folder.ParentId ?? Guid.Empty);
         writer.WriteString(folder.Name ?? string.Empty);
         writer.WriteByte((byte)(folder.IsSystem ? 1 : 0));
     }
@@ -155,12 +159,14 @@ public static class ProjectProtocolSerializer
         writer.WriteInt32(meta.HistoryCount);
         writer.WriteInt32(meta.TargetCount);
         writer.WriteGuid(meta.ProjectId ?? Guid.Empty);
+        writer.WriteGuid(meta.FolderId ?? Guid.Empty);
     }
 
     private static void WriteWriteUpMetadata(PooledBufferWriter writer, WriteUpMetadataDto writeUp)
     {
         writer.WriteGuid(writeUp.Id);
-        writer.WriteGuid(writeUp.SessionId);
+        writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
+        writer.WriteGuid(writeUp.ProjectId ?? Guid.Empty);
         writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
         writer.WriteString(writeUp.Name);
         writer.WriteInt64(writeUp.CreatedAt.Ticks);
@@ -175,6 +181,5 @@ public static class ProjectProtocolSerializer
         writer.WriteInt64(meta.CreatedAt.Ticks);
         writer.WriteInt64(meta.UpdatedAt.Ticks);
         writer.WriteInt32(meta.FolderCount);
-        writer.WriteInt32(meta.SessionCount);
     }
 }

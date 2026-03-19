@@ -9,7 +9,7 @@ public class TerminalServiceTests
     private static string GetExpectedPromptSymbol()
     {
         // Windows uses ">", Unix systems use "$" or "#"
-        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ">" : "$";
+        return CtfDeck.Terminal.Terminal.Shell.ShellDetector.IsWindows ? ">" : "$";
     }
     [Fact]
     public async Task RunAsync_WithExitCommand_ShouldTerminate()

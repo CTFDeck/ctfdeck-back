@@ -58,8 +58,8 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleList(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListRequest(data);
-        var projects = _projectService.GetAllMetadata();
-        return ProjectProtocolSerializer.SerializeListResult(request.MessageId, projects);
+        var result = _projectService.GetAllMetadata(request.Offset, request.Limit);
+        return ProjectProtocolSerializer.SerializeListResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleUpdate(ReadOnlySpan<byte> data)
@@ -79,7 +79,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleAddFolder(ReadOnlySpan<byte> data)
     {
         var request = new ProjectAddFolderRequest(data);
-        var folder = _projectService.AddFolder(request.ProjectId, request.Name);
+        var folder = _projectService.AddFolder(request.ProjectId, request.Name, request.ParentId);
         return ProjectProtocolSerializer.SerializeAddFolderResult(
             request.MessageId, folder != null, folder?.Id ?? Guid.Empty);
     }
@@ -101,29 +101,29 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleAssignSession(ReadOnlySpan<byte> data)
     {
         var request = new ProjectAssignSessionRequest(data);
-        var success = _projectService.AssignSession(request.SessionId, request.ProjectId);
+        var success = _projectService.AssignSession(request.SessionId, request.ProjectId, request.FolderId);
         return ProjectProtocolSerializer.SerializeAssignSessionResult(request.MessageId, success);
     }
 
     private byte[] HandleWriteUpMove(ReadOnlySpan<byte> data)
     {
         var request = new WriteUpMoveRequest(data);
-        var success = _projectService.MoveWriteUp(request.WriteUpId, request.FolderId);
+        var success = _projectService.MoveWriteUp(request.WriteUpId, request.ProjectId, request.FolderId);
         return ProjectProtocolSerializer.SerializeWriteUpMoveResult(request.MessageId, success);
     }
 
     private byte[] HandleListSessions(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListSessionsRequest(data);
-        var sessions = _projectService.ListSessions(request.ProjectId);
-        return ProjectProtocolSerializer.SerializeListSessionsResult(request.MessageId, sessions);
+        var result = _projectService.ListSessions(request.ProjectId, request.Offset, request.Limit);
+        return ProjectProtocolSerializer.SerializeListSessionsResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleListWriteUps(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListWriteUpsRequest(data);
-        var writeUps = _projectService.ListWriteUps(request.FolderId);
-        return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, writeUps);
+        var result = _projectService.ListWriteUps(request.FolderId, request.Offset, request.Limit);
+        return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleExport(ReadOnlySpan<byte> data)

@@ -85,11 +85,15 @@ public class WriteUpProtocolTests
         // Arrange
         var messageId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
+        var offset = 10;
+        var limit = 20;
 
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpList);
         writer.WriteGuid(messageId);
         writer.WriteGuid(sessionId);
+        writer.WriteInt32(offset);
+        writer.WriteInt32(limit);
         var data = writer.ToArray();
 
         // Act
@@ -98,6 +102,8 @@ public class WriteUpProtocolTests
         // Assert
         request.MessageId.Should().Be(messageId);
         request.SessionId.Should().Be(sessionId);
+        request.Offset.Should().Be(offset);
+        request.Limit.Should().Be(limit);
     }
 
     [Fact]
@@ -153,13 +159,15 @@ public class WriteUpProtocolTests
         };
 
         // Act
-        var bytes = WriteUpProtocolSerializer.SerializeListResult(messageId, writeUps);
+        var bytes = WriteUpProtocolSerializer.SerializeListResult(messageId, writeUps, 2);
 
         // Assert
         bytes[0].Should().Be((byte)MessageType.WriteUpListResult);
         var resultMsgId = new Guid(bytes.AsSpan(1, 16));
         resultMsgId.Should().Be(messageId);
-        var count = BitConverter.ToInt32(bytes.AsSpan(17, 4));
+        var totalCount = BitConverter.ToInt32(bytes.AsSpan(17, 4));
+        totalCount.Should().Be(2);
+        var count = BitConverter.ToInt32(bytes.AsSpan(21, 4));
         count.Should().Be(2);
     }
 

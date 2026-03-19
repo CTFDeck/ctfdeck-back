@@ -30,22 +30,41 @@ public class WebSocketIntegrationTests : IDisposable
         }
     }
 
+    private async Task<(byte[] Data, WebSocketMessageType Type)> ReceiveFullMessageBytesAsync(ClientWebSocket client, CancellationToken ct)
+    {
+        var buffer = new byte[1024 * 32];
+        var result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+
+        if (result.MessageType == WebSocketMessageType.Close || result.EndOfMessage)
+        {
+            var data = new byte[result.Count];
+            Array.Copy(buffer, data, result.Count);
+            return (data, result.MessageType);
+        }
+
+        using var ms = new MemoryStream();
+        ms.Write(buffer, 0, result.Count);
+
+        while (!result.EndOfMessage)
+        {
+            result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            ms.Write(buffer, 0, result.Count);
+        }
+
+        return (ms.ToArray(), result.MessageType);
+    }
+
     private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct)
     {
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
-        var buffer = new byte[1024 * 32];
 
         var messageId = Guid.Empty;
 
         while (true)
         {
-            var result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-            if (result.MessageType == WebSocketMessageType.Close) break;
-
-            // Copy relevant bytes
-            var data = new byte[result.Count];
-            Array.Copy(buffer, data, result.Count);
+            var (data, msgType) = await ReceiveFullMessageBytesAsync(client, ct);
+            if (msgType == WebSocketMessageType.Close) break;
 
             var type = (MessageType)data[0];
 
@@ -443,10 +462,9 @@ public class WebSocketIntegrationTests : IDisposable
         await _server.StopAsync();
 
         // Wait for client to detect closure
-        var buffer = new byte[1024];
         try
         {
-            await client.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            await ReceiveFullMessageBytesAsync(client, CancellationToken.None);
         }
         catch (WebSocketException) { }
 

@@ -8,6 +8,7 @@ public sealed class SessionDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public Guid? ProjectId { get; set; }
+    public Guid? FolderId { get; set; }
     public List<HistoryEntryDto> History { get; set; } = new();
     public List<SessionTargetDto> Targets { get; set; } = new();
 }

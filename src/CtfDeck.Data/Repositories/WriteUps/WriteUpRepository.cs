@@ -15,7 +15,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
         _context = context;
     }
 
-    public WriteUpDto Create(Guid sessionId, string name)
+    public WriteUpDto Create(Guid? sessionId, string name)
     {
         var now = DateTime.UtcNow;
         var model = new WriteUp
@@ -45,14 +45,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
-    public List<WriteUpMetadataDto> GetBySessionId(Guid sessionId)
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetBySessionId(Guid sessionId, int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.WriteUps
-                .Find(w => w.SessionId == sessionId)
+            var query = _context.WriteUps.Find(w => w.SessionId == sessionId);
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(w => w.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
+
+            return (items, totalCount);
         }
     }
 
@@ -79,14 +86,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
-    public List<WriteUpMetadataDto> GetByFolderId(Guid folderId)
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetByFolderId(Guid folderId, int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.WriteUps
-                .Find(w => w.FolderId == folderId)
+            var query = _context.WriteUps.Find(w => w.FolderId == folderId);
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(w => w.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(ToMetadataDto)
                 .ToList();
+
+            return (items, totalCount);
         }
     }
 
@@ -97,6 +111,21 @@ public sealed class WriteUpRepository : IWriteUpRepository
             var model = _context.WriteUps.FindById(writeUpId);
             if (model == null) return false;
 
+            model.FolderId = folderId;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.WriteUps.Update(model);
+        }
+    }
+
+    public bool SetProjectAndFolderId(Guid writeUpId, Guid? projectId, Guid? folderId)
+    {
+        lock (_lock)
+        {
+            var model = _context.WriteUps.FindById(writeUpId);
+            if (model == null) return false;
+
+            model.ProjectId = projectId;
             model.FolderId = folderId;
             model.UpdatedAt = DateTime.UtcNow;
 
@@ -117,12 +146,48 @@ public sealed class WriteUpRepository : IWriteUpRepository
         }
     }
 
+    public void ClearProjectId(Guid projectId)
+    {
+        lock (_lock)
+        {
+            var writeUps = _context.WriteUps.Find(w => w.ProjectId == projectId).ToList();
+            foreach (var writeUp in writeUps)
+            {
+                writeUp.ProjectId = null;
+                writeUp.FolderId = null;
+                _context.WriteUps.Update(writeUp);
+            }
+        }
+    }
+
+    public (IEnumerable<WriteUpMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false)
+    {
+        lock (_lock)
+        {
+            var query = unassignedOnly
+                ? _context.WriteUps.Find(w => w.ProjectId == null)
+                : _context.WriteUps.FindAll();
+
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(w => w.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
+                .Select(ToMetadataDto)
+                .ToList();
+
+            return (items, totalCount);
+        }
+    }
+
     public void Insert(WriteUpDto writeUp)
     {
         var model = new WriteUp
         {
             Id = writeUp.Id,
             SessionId = writeUp.SessionId,
+            ProjectId = writeUp.ProjectId,
             FolderId = writeUp.FolderId,
             Name = writeUp.Name,
             Content = writeUp.Content,
@@ -140,6 +205,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
     {
         Id = m.Id,
         SessionId = m.SessionId,
+        ProjectId = m.ProjectId,
         FolderId = m.FolderId,
         Name = m.Name ?? "",
         Content = m.Content ?? "",
@@ -151,6 +217,7 @@ public sealed class WriteUpRepository : IWriteUpRepository
     {
         Id = m.Id,
         SessionId = m.SessionId,
+        ProjectId = m.ProjectId,
         FolderId = m.FolderId,
         Name = m.Name ?? "",
         CreatedAt = m.CreatedAt,
