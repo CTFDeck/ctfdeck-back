@@ -109,33 +109,21 @@ CTFDeck supports exporting a complete project to a JSON file and re-importing it
 
 ### Export a project
 
-Via the test client CLI:
-```
-/project-export <projectId> <path> [flags]
-```
+The export request accepts a **flags bitmask** (1 byte) to control what is included:
 
-**Flags** control what is included in the export. Each flag is a letter:
-| Flag | Meaning |
-|------|---------|
-| `h` | Session history entries |
-| `t` | Session targets |
-| `w` | Write-ups |
-| `m` | Media (ignored if `w` is absent) |
-| `s` | Custom scripts (all scripts from the instance) |
+| Bit | Mask | Flag |
+|-----|------|------|
+| 0   | 0x01 | includeHistory — session history entries |
+| 1   | 0x02 | includeTargets — session targets |
+| 2   | 0x04 | includeWriteUps — write-ups |
+| 3   | 0x08 | includeMedia — media blobs (ignored if writeUps is off) |
+| 4   | 0x10 | includeScripts — all custom scripts from the instance |
 
-Default: `htwms` (everything). Examples:
-```
-/project-export <id> export.json          # exports everything
-/project-export <id> export.json wm       # write-ups + media only
-/project-export <id> export.json s        # scripts only
-/project-export <id> export.json ht       # sessions with history + targets, no writeups/media/scripts
-```
+Default: `0x1F` (everything included). If the flags byte is absent, all content is exported.
 
 ### Import a project
 
-```
-/project-import C:\path\to\export.json
-```
+The import processes everything present in the JSON file.
 
 **Notes:**
 - All original IDs are preserved.
