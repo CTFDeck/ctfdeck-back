@@ -66,6 +66,22 @@ public sealed class CustomScriptRepository : ICustomScriptRepository
         }
     }
 
+    public void Insert(CustomScriptDto script)
+    {
+        var model = new CustomScript
+        {
+            Id = script.Id,
+            Name = script.Name,
+            Category = (CtfDeck.Data.PersistenceModels.Scripts.ScriptCategory)script.Category,
+            Template = script.Template
+        };
+
+        lock (_lock)
+        {
+            _context.CustomScripts.Insert(model);
+        }
+    }
+
     private static CustomScriptDto ToDto(CustomScript m) => new()
     {
         Id = m.Id,

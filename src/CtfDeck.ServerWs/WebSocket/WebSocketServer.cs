@@ -97,7 +97,7 @@ public class WebSocketServer
         var customScriptService = new CustomScriptService(customScriptRepository);
         var writeUpService = new WriteUpService(writeUpRepository);
         var mediaService = new MediaService(mediaRepository);
-        var projectService = new ProjectService(projectRepository, sessionRepository, writeUpRepository, mediaRepository);
+        var projectService = new ProjectService(projectRepository, sessionRepository, writeUpRepository, mediaRepository, customScriptRepository);
 
         _messageHandlers =
         [

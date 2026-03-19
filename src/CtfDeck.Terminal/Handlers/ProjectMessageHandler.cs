@@ -129,7 +129,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleExport(ReadOnlySpan<byte> data)
     {
         var request = new ProjectExportRequest(data);
-        _projectService.ExportToFile(request.ProjectId, request.Path);
+        _projectService.ExportToFile(request.ProjectId, request.Path, request.Options);
         return ProjectProtocolSerializer.SerializeExportResult(request.MessageId, true);
     }
 

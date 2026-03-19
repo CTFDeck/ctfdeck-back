@@ -1477,12 +1477,25 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 17     | 16   | bytes[16] | Project ID (UUID)
 33     | 4    | int32     | Path length (P)
 37     | P    | bytes[]   | File path (UTF-8)
+37+P   | 1    | byte      | Flags bitmask (optional, default 0x1F)
 ```
+
+**Flags bitmask:**
+| Bit | Mask | Flag |
+|-----|------|------|
+| 0   | 0x01 | includeHistory — include session history entries |
+| 1   | 0x02 | includeTargets — include session targets |
+| 2   | 0x04 | includeWriteUps — include write-ups |
+| 3   | 0x08 | includeMedia — include media blobs (ignored if writeUps=false) |
+| 4   | 0x10 | includeScripts — include all custom scripts (global, not project-scoped) |
+
+Default `0x1F` = all included. If the flags byte is absent (old client), `0x1F` is assumed.
 
 **Notes:**
 - The server writes the project data as a JSON file to the specified filesystem path.
-- The export includes the project, its folders, all linked sessions (with history and targets), all write-ups (from folders and sessions), and all media referenced in write-up content via `media://{uuid}` patterns.
+- The export includes the project, its folders, and optionally: sessions (with history and targets), write-ups, media, and custom scripts — controlled by the flags bitmask.
 - Media binary data is encoded as base64 in the JSON.
+- The `scripts` field in the export JSON is optional. When present, it contains all custom scripts from the instance.
 
 #### ProjectImport
 ```

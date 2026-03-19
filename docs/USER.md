@@ -111,14 +111,25 @@ CTFDeck supports exporting a complete project to a JSON file and re-importing it
 
 Via the test client CLI:
 ```
-/project-export <projectId> C:\path\to\export.json
+/project-export <projectId> <path> [flags]
 ```
 
-The export includes:
-- The project and its folders
-- All sessions linked to the project (with full history and targets)
-- All write-ups (from project folders and project sessions)
-- All media referenced in write-up content (`media://{uuid}` patterns), with binary data as base64
+**Flags** control what is included in the export. Each flag is a letter:
+| Flag | Meaning |
+|------|---------|
+| `h` | Session history entries |
+| `t` | Session targets |
+| `w` | Write-ups |
+| `m` | Media (ignored if `w` is absent) |
+| `s` | Custom scripts (all scripts from the instance) |
+
+Default: `htwms` (everything). Examples:
+```
+/project-export <id> export.json          # exports everything
+/project-export <id> export.json wm       # write-ups + media only
+/project-export <id> export.json s        # scripts only
+/project-export <id> export.json ht       # sessions with history + targets, no writeups/media/scripts
+```
 
 ### Import a project
 
@@ -130,6 +141,7 @@ The export includes:
 - All original IDs are preserved.
 - If the project ID (or any session/write-up/media ID) already exists in the database, the import is rejected.
 - The export file must be version 1.
+- If the export contains custom scripts, they are imported as well.
 
 For the full JSON schema, see [Protocol Documentation](PROTOCOL.md#json-export-schema).
 

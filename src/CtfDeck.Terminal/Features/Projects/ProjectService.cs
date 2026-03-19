@@ -5,6 +5,7 @@ using CtfDeck.Contracts.Models.Media;
 using CtfDeck.Contracts.Models.Sessions;
 using CtfDeck.Contracts.Models.WriteUps;
 using CtfDeck.Abstractions.Ports.Projects;
+using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
 using CtfDeck.Abstractions.Ports.WriteUps;
 using CtfDeck.Abstractions.Ports.Media;
@@ -17,6 +18,7 @@ public class ProjectService
     private readonly ISessionRepository _sessionRepository;
     private readonly IWriteUpRepository _writeUpRepository;
     private readonly IMediaRepository _mediaRepository;
+    private readonly ICustomScriptRepository _customScriptRepository;
 
     private static readonly Regex MediaRegex = new(@"media://([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", RegexOptions.Compiled);
 
@@ -30,12 +32,14 @@ public class ProjectService
         IProjectRepository projectRepository,
         ISessionRepository sessionRepository,
         IWriteUpRepository writeUpRepository,
-        IMediaRepository mediaRepository)
+        IMediaRepository mediaRepository,
+        ICustomScriptRepository customScriptRepository)
     {
         _projectRepository = projectRepository;
         _sessionRepository = sessionRepository;
         _writeUpRepository = writeUpRepository;
         _mediaRepository = mediaRepository;
+        _customScriptRepository = customScriptRepository;
     }
 
     public ProjectDto Create(string name, string description)
@@ -113,7 +117,7 @@ public class ProjectService
         return (result.Items.ToList(), result.TotalCount);
     }
 
-    public void ExportToFile(Guid projectId, string filePath)
+    public void ExportToFile(Guid projectId, string filePath, ExportOptions options)
     {
         var project = _projectRepository.GetById(projectId)
             ?? throw new InvalidOperationException("Project not found");
@@ -126,65 +130,86 @@ public class ProjectService
             .Cast<SessionDto>()
             .ToList();
 
-        var writeUpIds = new HashSet<Guid>();
+        if (!options.IncludeHistory)
+        {
+            foreach (var session in sessions)
+                session.History = new List<HistoryEntryDto>();
+        }
+
+        if (!options.IncludeTargets)
+        {
+            foreach (var session in sessions)
+                session.Targets = new List<SessionTargetDto>();
+        }
+
         var writeUps = new List<WriteUpDto>();
-
-        // Collect writeups from project folders
-        foreach (var folder in project.Folders)
-        {
-            var folderWriteUpsResult = _writeUpRepository.GetByFolderId(folder.Id, 0, int.MaxValue);
-            foreach (var meta in folderWriteUpsResult.Items)
-            {
-                if (writeUpIds.Add(meta.Id))
-                {
-                    var writeUp = _writeUpRepository.GetById(meta.Id);
-                    if (writeUp != null)
-                        writeUps.Add(writeUp);
-                }
-            }
-        }
-
-        // Collect writeups from project sessions (even if not in a folder)
-        foreach (var session in sessions)
-        {
-            var sessionWriteUpsResult = _writeUpRepository.GetBySessionId(session.Id, 0, int.MaxValue);
-            foreach (var meta in sessionWriteUpsResult.Items)
-            {
-                if (writeUpIds.Add(meta.Id))
-                {
-                    var writeUp = _writeUpRepository.GetById(meta.Id);
-                    if (writeUp != null)
-                        writeUps.Add(writeUp);
-                }
-            }
-        }
-
-        var mediaIds = new HashSet<Guid>();
-        foreach (var writeUp in writeUps)
-        {
-            foreach (Match match in MediaRegex.Matches(writeUp.Content))
-            {
-                if (Guid.TryParse(match.Groups[1].Value, out var mediaId))
-                    mediaIds.Add(mediaId);
-            }
-        }
-
         var media = new List<MediaExportDto>();
-        foreach (var mediaId in mediaIds)
+
+        if (options.IncludeWriteUps)
         {
-            var mediaDto = _mediaRepository.GetById(mediaId);
-            if (mediaDto != null)
+            var writeUpIds = new HashSet<Guid>();
+
+            foreach (var folder in project.Folders)
             {
-                media.Add(new MediaExportDto
+                var folderWriteUpsResult = _writeUpRepository.GetByFolderId(folder.Id, 0, int.MaxValue);
+                foreach (var meta in folderWriteUpsResult.Items)
                 {
-                    Id = mediaDto.Id,
-                    FileName = mediaDto.FileName,
-                    MimeType = mediaDto.MimeType,
-                    Data = Convert.ToBase64String(mediaDto.Data),
-                    CreatedAt = mediaDto.CreatedAt
-                });
+                    if (writeUpIds.Add(meta.Id))
+                    {
+                        var writeUp = _writeUpRepository.GetById(meta.Id);
+                        if (writeUp != null)
+                            writeUps.Add(writeUp);
+                    }
+                }
+            }
+
+            foreach (var session in sessions)
+            {
+                var sessionWriteUpsResult = _writeUpRepository.GetBySessionId(session.Id, 0, int.MaxValue);
+                foreach (var meta in sessionWriteUpsResult.Items)
+                {
+                    if (writeUpIds.Add(meta.Id))
+                    {
+                        var writeUp = _writeUpRepository.GetById(meta.Id);
+                        if (writeUp != null)
+                            writeUps.Add(writeUp);
+                    }
+                }
+            }
+
+            if (options.IncludeMedia)
+            {
+                var mediaIds = new HashSet<Guid>();
+                foreach (var writeUp in writeUps)
+                {
+                    foreach (Match match in MediaRegex.Matches(writeUp.Content))
+                    {
+                        if (Guid.TryParse(match.Groups[1].Value, out var mediaId))
+                            mediaIds.Add(mediaId);
+                    }
+                }
+
+                foreach (var mediaId in mediaIds)
+                {
+                    var mediaDto = _mediaRepository.GetById(mediaId);
+                    if (mediaDto != null)
+                    {
+                        media.Add(new MediaExportDto
+                        {
+                            Id = mediaDto.Id,
+                            FileName = mediaDto.FileName,
+                            MimeType = mediaDto.MimeType,
+                            Data = Convert.ToBase64String(mediaDto.Data),
+                            CreatedAt = mediaDto.CreatedAt
+                        });
+                    }
+                }
             }
         }
+
+        var scripts = options.IncludeScripts
+            ? _customScriptRepository.GetAll()
+            : null;
 
         var export = new ProjectExportDto
         {
@@ -193,7 +218,8 @@ public class ProjectService
             Project = project,
             Sessions = sessions,
             WriteUps = writeUps,
-            Media = media
+            Media = media,
+            Scripts = scripts
         };
 
         var json = JsonSerializer.Serialize(export, JsonOptions);
@@ -256,6 +282,14 @@ public class ProjectService
                 CreatedAt = media.CreatedAt
             };
             _mediaRepository.Insert(mediaDto);
+        }
+
+        if (export.Scripts != null)
+        {
+            foreach (var script in export.Scripts)
+            {
+                _customScriptRepository.Insert(script);
+            }
         }
 
         return export.Project.Id;

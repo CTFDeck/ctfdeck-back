@@ -1,4 +1,5 @@
 using System.Text;
+using CtfDeck.Contracts.Models.Projects;
 using CtfDeck.Contracts.Transport;
 
 namespace CtfDeck.Contracts.Protocols.Project;
@@ -224,10 +225,11 @@ public class ProjectExportRequest
     public Guid MessageId { get; }
     public Guid ProjectId { get; }
     public string Path { get; }
+    public ExportOptions Options { get; }
 
     public ProjectExportRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][4B pathLen][path]
+        // Format: [1B type][16B msgId][16B projectId][4B pathLen][path][1B flags?]
         MessageId = new Guid(data.Slice(1, 16));
         ProjectId = new Guid(data.Slice(17, 16));
 
@@ -235,6 +237,11 @@ public class ProjectExportRequest
         var pathLen = BitConverter.ToInt32(data.Slice(offset, 4));
         offset += 4;
         Path = Encoding.UTF8.GetString(data.Slice(offset, pathLen));
+        offset += pathLen;
+
+        Options = offset < data.Length
+            ? ExportOptions.FromFlags(data[offset])
+            : ExportOptions.All;
     }
 }
 
