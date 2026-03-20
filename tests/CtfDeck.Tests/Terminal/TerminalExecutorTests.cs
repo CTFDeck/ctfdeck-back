@@ -1,4 +1,4 @@
-﻿using Xunit;
+using Xunit;
 using CtfDeck.Terminal.Terminal;
 using System.Runtime.InteropServices;
 
