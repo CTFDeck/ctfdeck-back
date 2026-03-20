@@ -212,7 +212,7 @@ public readonly ref struct ProjectExportRequest
         (_, MessageId) = reader.ReadHeader();
         ProjectId = reader.ReadGuid();
         Path = reader.ReadString();
-        Options = ExportOptions.FromFlags(reader.ReadByte());
+        Options = reader.Remaining ? ExportOptions.FromFlags(reader.ReadByte()) : ExportOptions.All;
     }
 }
 

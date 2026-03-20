@@ -146,6 +146,7 @@ public class WebSocketIntegrationTests : IDisposable
                 var cmdBytes = Encoding.UTF8.GetBytes(command);
                 var commandStruct = new WebSocketCommand
                 {
+                    Command = command,
                     CommandLength = cmdBytes.Length,
                     CommandBytes = cmdBytes,
                     MessageId = messageId
@@ -245,6 +246,7 @@ public class WebSocketIntegrationTests : IDisposable
                 var cmdBytes = Encoding.UTF8.GetBytes(command);
                 var commandStruct = new WebSocketCommand
                 {
+                    Command = command,
                     CommandLength = cmdBytes.Length,
                     CommandBytes = cmdBytes,
                     MessageId = messageId
@@ -374,6 +376,7 @@ public class WebSocketIntegrationTests : IDisposable
             var cmdBytes = Encoding.UTF8.GetBytes(emptyCommand);
             var commandStruct = new WebSocketCommand
             {
+                Command = emptyCommand,
                 CommandLength = cmdBytes.Length,
                 CommandBytes = cmdBytes,
                 MessageId = messageId
@@ -421,6 +424,7 @@ public class WebSocketIntegrationTests : IDisposable
             var cmdBytes = Encoding.UTF8.GetBytes(largeCommand);
             var commandStruct = new WebSocketCommand
             {
+                Command = largeCommand,
                 CommandLength = cmdBytes.Length,
                 CommandBytes = cmdBytes,
                 MessageId = messageId

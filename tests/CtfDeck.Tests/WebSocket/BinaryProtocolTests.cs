@@ -11,6 +11,7 @@ public class BinaryProtocolTests
         var bytes = Encoding.UTF8.GetBytes(commandText);
         return new WebSocketCommand
         {
+            Command = commandText,
             CommandLength = bytes.Length,
             CommandBytes = bytes,
             MessageId = messageId
