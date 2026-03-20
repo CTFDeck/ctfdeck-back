@@ -59,3 +59,4 @@ global.json
 .DS_Store
 .idea
 coverage/*
+CtfDeck.sln.DotSettings.user

@@ -11,10 +11,9 @@ public readonly ref struct SessionCreateRequest
 
     public SessionCreateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B nameLen][name]
-        MessageId = new Guid(data.Slice(1, 16));
-        var nameLen = BitConverter.ToInt32(data.Slice(17, 4));
-        Name = Encoding.UTF8.GetString(data.Slice(21, nameLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Name = reader.ReadString();
     }
 }
 
@@ -25,9 +24,9 @@ public readonly ref struct SessionSetActiveRequest
 
     public SessionSetActiveRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
     }
 }
 
@@ -38,9 +37,9 @@ public readonly ref struct SessionLoadRequest
 
     public SessionLoadRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
     }
 }
 
@@ -53,11 +52,11 @@ public readonly ref struct SessionListRequest
 
     public SessionListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B offset][4B limit][1B unassignedOnly]
-        MessageId = new Guid(data.Slice(1, 16));
-        Offset = BitConverter.ToInt32(data.Slice(17, 4));
-        Limit = BitConverter.ToInt32(data.Slice(21, 4));
-        UnassignedOnly = data.Length > 25 && data[25] == 1;
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Offset = reader.ReadInt32();
+        Limit = reader.ReadInt32();
+        UnassignedOnly = reader.Remaining && reader.ReadByte() == 1;
     }
 }
 
@@ -68,9 +67,9 @@ public readonly ref struct SessionDeleteRequest
 
     public SessionDeleteRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
     }
 }
 
@@ -82,19 +81,16 @@ public class SessionUpdateTargetsRequest
 
     public SessionUpdateTargetsRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][4B count][...targets]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
 
-        var count = BitConverter.ToInt32(data.Slice(33, 4));
+        var count = reader.ReadInt32();
         Targets = new List<SessionTargetDto>(count);
 
-        var offset = 37;
         for (var i = 0; i < count; i++)
         {
-            var id = new Guid(data.Slice(offset, 16));
-            offset += 16;
-            Targets.Add(TargetBinaryReader.ReadFields(data, ref offset, id));
+            Targets.Add(reader.ReadTarget());
         }
     }
 }
@@ -108,19 +104,11 @@ public class SessionUpdateRequest
 
     public SessionUpdateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][4B nameLen][name][4B descLen][desc]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
-
-        var offset = 33;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
+        Name = reader.ReadString();
+        Description = reader.ReadString();
     }
 }
 
@@ -132,12 +120,11 @@ public class SessionAddTargetRequest
 
     public SessionAddTargetRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][target fields...]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
 
-        var offset = 33;
-        Target = TargetBinaryReader.ReadFields(data, ref offset);
+        Target = reader.ReadTarget();
     }
 }
 
@@ -149,10 +136,10 @@ public class SessionDeleteTargetRequest
 
     public SessionDeleteTargetRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][16B targetId]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
-        TargetId = new Guid(data.Slice(33, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
+        TargetId = reader.ReadGuid();
     }
 }
 
@@ -164,13 +151,10 @@ public class SessionEditTargetRequest
 
     public SessionEditTargetRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][16B targetId][target fields...]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
-        var targetId = new Guid(data.Slice(33, 16));
-
-        var offset = 49;
-        Target = TargetBinaryReader.ReadFields(data, ref offset, targetId);
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
+        Target = reader.ReadTarget();
     }
 }
 

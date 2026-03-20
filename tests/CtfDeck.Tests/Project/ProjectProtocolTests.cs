@@ -583,4 +583,35 @@ public class ProjectProtocolTests
         var count = BitConverter.ToInt32(bytes.AsSpan(21, 4));
         count.Should().Be(2);
     }
+
+    [Fact]
+    public void ProjectListExportsRequest_ShouldDeserializeCorrectly()
+    {
+        var messageId = Guid.NewGuid();
+
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectListExports);
+        writer.WriteGuid(messageId);
+        var data = writer.ToArray();
+
+        var request = new ProjectListExportsRequest(data);
+
+        request.MessageId.Should().Be(messageId);
+    }
+
+    [Fact]
+    public void SerializeListExportsResult_ShouldSerializeCorrectly()
+    {
+        var messageId = Guid.NewGuid();
+        var exports = new List<ProjectExportMetadata>
+        {
+            new("export1.json", 1024, 1, 2, DateTime.UtcNow, Guid.NewGuid(), true)
+        };
+
+        var bytes = ProjectProtocolSerializer.SerializeListExportsResult(messageId, exports);
+
+        bytes[0].Should().Be((byte)MessageType.ProjectListExportsResult);
+        new Guid(bytes.AsSpan(1, 16)).Should().Be(messageId);
+        BitConverter.ToInt32(bytes.AsSpan(17, 4)).Should().Be(1);
+    }
 }

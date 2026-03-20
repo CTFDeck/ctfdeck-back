@@ -130,7 +130,7 @@ public class MediaProtocolTests
         };
 
         // Act
-        var bytes = MediaProtocolSerializer.SerializeLoadResult(messageId, true, media);
+        var bytes = MediaProtocolSerializer.SerializeLoadResult(messageId, true, media.Id, media.Data);
 
         // Assert
         bytes[0].Should().Be((byte)MessageType.MediaLoadResult);
@@ -148,7 +148,7 @@ public class MediaProtocolTests
         var messageId = Guid.NewGuid();
 
         // Act
-        var bytes = MediaProtocolSerializer.SerializeLoadResult(messageId, false, null);
+        var bytes = MediaProtocolSerializer.SerializeLoadResult(messageId, false, Guid.Empty, null);
 
         // Assert
         bytes[0].Should().Be((byte)MessageType.MediaLoadResult);

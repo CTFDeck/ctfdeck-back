@@ -92,7 +92,7 @@ public sealed class CommandDispatcher
             // Command was killed or sudo password cancelled — send StreamEnd with exitCode -1
             try
             {
-                var endData = BinaryProtocolSerializer.SerializeStreamEnd(command.MessageId, -1, executor.CurrentDirectory);
+                var endData = TerminalProtocolSerializer.SerializeStreamEnd(command.MessageId, -1, executor.CurrentDirectory);
                 await ctx.Sender.SendAsync(endData);
             }
             catch (Exception ex)
@@ -135,7 +135,7 @@ public sealed class CommandDispatcher
 
         Console.WriteLine($"[KILL] {commandId} → {(success ? "cancelled" : "not found")}");
 
-        var killResult = BinaryProtocolSerializer.SerializeCommandKillResult(commandId, success);
+        var killResult = TerminalProtocolSerializer.SerializeCommandKillResult(commandId, success);
         await ctx.Sender.SendAsync(killResult);
     }
 
@@ -147,7 +147,7 @@ public sealed class CommandDispatcher
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         ctx.SudoWaiters[messageId] = tcs;
 
-        var req = BinaryProtocolSerializer.SerializePasswordRequest(messageId, "Sudo password required");
+        var req = TerminalProtocolSerializer.SerializePasswordRequest(messageId, "Sudo password required");
         await ctx.Sender.SendAsync(req);
 
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
