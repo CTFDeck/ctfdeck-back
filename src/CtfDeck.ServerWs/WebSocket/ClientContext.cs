@@ -31,6 +31,18 @@ public sealed class ClientContext : IDisposable
         }
 
         ActiveCommands.Clear();
+        try
+        {
+            if (WebSocket.State != WebSocketState.Closed && WebSocket.State != WebSocketState.Aborted)
+            {
+                WebSocket.Abort();
+            }
+        }
+        catch { /* ignore socket shutdown errors */ }
+
+        try { WebSocket.Dispose(); }
+        catch { /* ignore socket dispose errors */ }
+
         Executor.Dispose();
         SendLock.Dispose();
     }

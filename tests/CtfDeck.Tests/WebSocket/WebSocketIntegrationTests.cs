@@ -468,6 +468,15 @@ public class WebSocketIntegrationTests : IDisposable
         }
         catch (WebSocketException) { }
 
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        while (!timeoutCts.Token.IsCancellationRequested &&
+               client.State != WebSocketState.CloseReceived &&
+               client.State != WebSocketState.Closed &&
+               client.State != WebSocketState.Aborted)
+        {
+            await Task.Delay(25, timeoutCts.Token).ContinueWith(_ => { }, CancellationToken.None);
+        }
+
         // Assert
         client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.Closed || s == WebSocketState.Aborted);
         _server.ConnectedClientCount.Should().Be(0);
