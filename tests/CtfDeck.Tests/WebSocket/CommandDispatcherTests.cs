@@ -63,6 +63,25 @@ public sealed class CommandDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task RequestSudoPasswordAsync_WhenTimedOut_ShouldReturnNull_AndCleanupWaiter()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-timeout", socket);
+        var dispatcher = new CommandDispatcher(
+            _activeSessions,
+            CancellationToken.None,
+            sudoPasswordTimeout: TimeSpan.FromMilliseconds(25));
+        var messageId = Guid.NewGuid();
+
+        var result = await dispatcher.RequestSudoPasswordAsync(ctx, messageId, CancellationToken.None);
+
+        result.Should().BeNull();
+        ctx.SudoWaiters.ContainsKey(messageId).Should().BeFalse();
+        socket.SentMessages.Should().ContainSingle();
+        socket.SentMessages[0].Data[0].Should().Be((byte)MessageType.PasswordRequest);
+    }
+
+    [Fact]
     public async Task HandleKillAsync_WhenCommandExists_ShouldCancelAndSendSuccess()
     {
         var socket = new MockWebSocket();

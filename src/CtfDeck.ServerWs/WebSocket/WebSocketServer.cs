@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 
+using CtfDeck.ServerWs;
 using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
 using CtfDeck.Abstractions.Ports.WriteUps;
@@ -37,7 +38,7 @@ using CtfDeck.Contracts.Protocols.Tools;
 
 namespace CtfDeck.ServerWs.WebSocket;
 
-public class WebSocketServer
+public class WebSocketServer : IServerHost
 {
     private readonly HttpListener _httpListener;
     private readonly CancellationTokenSource _cancellationTokenSource;
@@ -53,6 +54,7 @@ public class WebSocketServer
     private readonly Func<string, string> _aliasResolver;
 
     private readonly CommandDispatcher _commandDispatcher;
+    private readonly BinaryMessageDispatcher _binaryMessageDispatcher;
 
     private readonly List<MessageHandlerBase> _messageHandlers;
 
@@ -108,6 +110,13 @@ public class WebSocketServer
             new ProjectMessageHandler(projectService),
             new ToolMessageHandler(toolInstallationCoordinator)
         ];
+
+        _binaryMessageDispatcher = new BinaryMessageDispatcher(
+            _commandDispatcher.ProcessCdAsync,
+            _commandDispatcher.ProcessStreamingAsync,
+            _commandDispatcher.HandleKillAsync,
+            _messageHandlers,
+            Console.WriteLine);
     }
 
     private static OsKind DetectOsKind()
@@ -174,7 +183,7 @@ public class WebSocketServer
             try
             {
                 if (ctx.WebSocket.State == WebSocketState.Open)
-                    await ctx.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None);
+                    await CloseWebSocketSafelyAsync(ctx.WebSocket, "Server shutting down");
             }
             catch (WebSocketException) { /* ignore */ }
         }
@@ -275,10 +284,7 @@ public class WebSocketServer
 
             if (webSocketContext?.WebSocket.State == WebSocketState.Open)
             {
-                await webSocketContext.WebSocket.CloseAsync(
-                    WebSocketCloseStatus.NormalClosure,
-                    "Connection closed",
-                    CancellationToken.None);
+                await CloseWebSocketSafelyAsync(webSocketContext.WebSocket, "Connection closed");
             }
 
             Console.WriteLine($"Client {clientId} disconnected");
@@ -299,75 +305,13 @@ public class WebSocketServer
 
                 if (messageType == WebSocketMessageType.Close)
                 {
-                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                    await CloseWebSocketSafelyAsync(webSocket, "Closing");
                     break;
                 }
 
                 if (messageType == WebSocketMessageType.Binary)
                 {
-                    var protocolType = (MessageType)message.Span[0];
-
-                    switch (protocolType)
-                    {
-                        case MessageType.CommandExecute:
-                            {
-                                var messageDataCopy = message.ToArray();
-                                var command = WebSocketCommand.Deserialize(messageDataCopy);
-                                var trimmedCommand = command.Command.Trim();
-
-                                if (trimmedCommand.StartsWith("cd ") || trimmedCommand == "cd")
-                                {
-                                    await _commandDispatcher.ProcessCdAsync(ctx, command);
-                                }
-                                else
-                                {
-                                    _ = Task.Run(() => _commandDispatcher.ProcessStreamingAsync(ctx, command));
-                                }
-                                break;
-                            }
-
-                        case MessageType.CommandKill:
-                            {
-                                var killCommandId = new CommandKillReader(message.Span).CommandId;
-                                await _commandDispatcher.HandleKillAsync(ctx, killCommandId);
-                                break;
-                            }
-
-                        case MessageType.PasswordProvide:
-                            {
-                                var reader = new PasswordProvideReader(message.Span);
-                                var pwd = reader.PasswordLength == 0 ? null : reader.GetPassword();
-
-                                if (ctx.SudoWaiters.TryRemove(reader.MessageId, out var tcs))
-                                {
-                                    tcs.TrySetResult(pwd);
-                                }
-                                break;
-                            }
-
-                        default:
-                            {
-                                var handled = false;
-
-                                foreach (var handler in _messageHandlers)
-                                {
-                                    if (await handler.TryHandleAsync(
-                                            clientId,
-                                            message,
-                                            payload => ctx.Sender.SendAsync(payload, _cancellationTokenSource.Token),
-                                            _cancellationTokenSource.Token))
-                                    {
-                                        handled = true;
-                                        break;
-                                    }
-                                }
-
-                                if (!handled)
-                                    Console.WriteLine($"Unknown message from client {clientId}: type={message.Span[0]}, size={message.Length}");
-
-                                break;
-                            }
-                    }
+                    await _binaryMessageDispatcher.DispatchAsync(ctx, message, _cancellationTokenSource.Token);
                 }
             }
         }
@@ -413,6 +357,31 @@ public class WebSocketServer
         }
 
         return (ms.GetBuffer().AsMemory(0, (int)ms.Length), result.MessageType);
+    }
+
+    private static async Task CloseWebSocketSafelyAsync(System.Net.WebSockets.WebSocket webSocket, string reason)
+    {
+        if (webSocket.State != WebSocketState.Open && webSocket.State != WebSocketState.CloseReceived)
+            return;
+
+        using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, reason, closeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Peer did not complete close handshake in time.
+        }
+        catch (WebSocketException)
+        {
+            // Ignore close handshake failures on shutdown/disconnect paths.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Socket already disposed.
+        }
     }
 
     public bool IsRunning => _isRunning;

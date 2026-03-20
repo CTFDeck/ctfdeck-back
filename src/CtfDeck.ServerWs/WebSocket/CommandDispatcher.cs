@@ -8,15 +8,18 @@ public sealed class CommandDispatcher
     private readonly ActiveSessionManager _activeSessionManager;
     private readonly CancellationToken _serverShutdownToken;
     private readonly Func<string, string> _aliasResolver;
+    private readonly TimeSpan _sudoPasswordTimeout;
 
     public CommandDispatcher(
         ActiveSessionManager activeSessionManager,
         CancellationToken serverShutdownToken,
-        Func<string, string>? aliasResolver = null)
+        Func<string, string>? aliasResolver = null,
+        TimeSpan? sudoPasswordTimeout = null)
     {
         _activeSessionManager = activeSessionManager;
         _serverShutdownToken = serverShutdownToken;
         _aliasResolver = aliasResolver ?? (cmd => cmd);
+        _sudoPasswordTimeout = sudoPasswordTimeout ?? TimeSpan.FromSeconds(30);
     }
 
     /// <summary>
@@ -150,7 +153,7 @@ public sealed class CommandDispatcher
         var req = TerminalProtocolSerializer.SerializePasswordRequest(messageId, "Sudo password required");
         await ctx.Sender.SendAsync(req);
 
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeoutCts = new CancellationTokenSource(_sudoPasswordTimeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try
