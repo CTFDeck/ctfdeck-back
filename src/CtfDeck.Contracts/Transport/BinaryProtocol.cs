@@ -122,6 +122,8 @@ public enum MessageType : byte
     ProjectExportResult = 115,
     ProjectImport = 116,
     ProjectImportResult = 117,
+    ProjectListExports = 118,
+    ProjectListExportsResult = 119,
 
     // Tools management
     ToolInventoryRequest = 120,

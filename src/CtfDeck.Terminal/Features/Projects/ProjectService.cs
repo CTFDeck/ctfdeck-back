@@ -9,6 +9,7 @@ using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
 using CtfDeck.Abstractions.Ports.WriteUps;
 using CtfDeck.Abstractions.Ports.Media;
+using System.IO;
 
 namespace CtfDeck.Terminal.Features.Projects;
 
@@ -19,6 +20,8 @@ public class ProjectService
     private readonly IWriteUpRepository _writeUpRepository;
     private readonly IMediaRepository _mediaRepository;
     private readonly ICustomScriptRepository _customScriptRepository;
+
+    private static readonly Regex FilenameSanitizationRegex = new(@"[^a-zA-Z0-9\-_]", RegexOptions.Compiled);
 
     private static readonly Regex MediaRegex = new(@"media://([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", RegexOptions.Compiled);
 
@@ -40,6 +43,71 @@ public class ProjectService
         _writeUpRepository = writeUpRepository;
         _mediaRepository = mediaRepository;
         _customScriptRepository = customScriptRepository;
+
+        if (!Directory.Exists(ExportsPath))
+        {
+            Directory.CreateDirectory(ExportsPath);
+        }
+    }
+
+    private static string ExportsPath => Path.Combine(AppContext.BaseDirectory, "exports");
+
+    public IEnumerable<ProjectExportMetadata> GetAvailableExports()
+    {
+        if (!Directory.Exists(ExportsPath)) return Enumerable.Empty<ProjectExportMetadata>();
+        
+        var files = Directory.GetFiles(ExportsPath, "*.json");
+        var results = new List<ProjectExportMetadata>();
+
+        foreach (var file in files)
+        {
+            try
+            {
+                var info = new FileInfo(file);
+                using var stream = File.OpenRead(file);
+                using var doc = JsonDocument.Parse(stream);
+                
+                var root = doc.RootElement;
+                var exportedAt = root.TryGetProperty("ExportedAt", out var exportedAtProp) 
+                    ? exportedAtProp.GetDateTime() 
+                    : info.LastWriteTimeUtc;
+
+                var sessions = root.TryGetProperty("Sessions", out var sessionsProp) 
+                    ? sessionsProp.GetArrayLength() 
+                    : 0;
+
+                var writeUps = root.TryGetProperty("WriteUps", out var writeUpsProp) 
+                    ? writeUpsProp.GetArrayLength() 
+                    : 0;
+
+                results.Add(new ProjectExportMetadata(
+                    info.Name,
+                    info.Length,
+                    sessions,
+                    writeUps,
+                    exportedAt));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ProjectService] Failed to read metadata for {file}: {ex.Message}");
+            }
+        }
+
+        return results.OrderByDescending(x => x.ExportedAt);
+    }
+
+    private string NormalizeFilename(string filename)
+    {
+        if (string.IsNullOrWhiteSpace(filename)) return "export.json";
+
+        // Remove extension if present to normalize the base name
+        var baseName = Path.GetFileNameWithoutExtension(filename);
+        
+        // Replace invalid characters with underscore
+        // Allowed: a-z, A-Z, 0-9, -, _
+        baseName = FilenameSanitizationRegex.Replace(baseName, "_");
+        
+        return baseName + ".json";
     }
 
     public ProjectDto Create(string name, string description)
@@ -66,14 +134,30 @@ public class ProjectService
 
     public bool Delete(Guid id)
     {
+        // 1. Delete associated sessions
+        var sessions = _sessionRepository.GetByProjectId(id, 0, int.MaxValue);
+        foreach (var session in sessions.Items)
+        {
+            _sessionRepository.Delete(session.Id);
+        }
+
+        // 2. Delete associated write-ups (using folder-based and project-based cleanup)
+        // Note: Repository might have a more direct way but we use what's available
         var folderIds = _projectRepository.GetFolderIds(id);
-
-        _sessionRepository.ClearProjectId(id);
-        _writeUpRepository.ClearProjectId(id);
-
         foreach (var folderId in folderIds)
         {
-            _writeUpRepository.ClearFolderId(folderId);
+            var folderWriteUps = _writeUpRepository.GetByFolderId(folderId, 0, int.MaxValue);
+            foreach (var wu in folderWriteUps.Items)
+            {
+                _writeUpRepository.Delete(wu.Id);
+            }
+        }
+
+        // Also check for unassigned writeups in this project
+        var unassignedWriteUps = _writeUpRepository.GetAllMetadata(0, int.MaxValue, false);
+        foreach (var wu in unassignedWriteUps.Items.Where(x => x.ProjectId == id))
+        {
+            _writeUpRepository.Delete(wu.Id);
         }
 
         return _projectRepository.Delete(id);
@@ -223,15 +307,27 @@ public class ProjectService
         };
 
         var json = JsonSerializer.Serialize(export, JsonOptions);
-        File.WriteAllText(filePath, json);
+        var normalized = NormalizeFilename(filePath);
+        var finalPath = Path.IsPathRooted(filePath) ? filePath : Path.Combine(ExportsPath, normalized);
+
+        var dir = Path.GetDirectoryName(finalPath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        File.WriteAllText(finalPath, json);
     }
 
     public Guid ImportFromFile(string filePath)
     {
-        if (!File.Exists(filePath))
-            throw new InvalidOperationException("File not found");
+        var normalized = NormalizeFilename(filePath);
+        var finalPath = Path.IsPathRooted(filePath) ? filePath : Path.Combine(ExportsPath, normalized);
 
-        var json = File.ReadAllText(filePath);
+        if (!File.Exists(finalPath))
+            throw new InvalidOperationException("File not found: " + finalPath);
+
+        var json = File.ReadAllText(finalPath);
         var export = JsonSerializer.Deserialize<ProjectExportDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Invalid export file");
 
@@ -259,39 +355,47 @@ public class ProjectService
                 throw new InvalidOperationException($"Media {media.Id} already exists");
         }
 
-        _projectRepository.Insert(export.Project);
-
-        foreach (var session in export.Sessions)
+        try
         {
-            _sessionRepository.Insert(session);
-        }
+            _projectRepository.Insert(export.Project);
 
-        foreach (var writeUp in export.WriteUps)
-        {
-            _writeUpRepository.Insert(writeUp);
-        }
-
-        foreach (var media in export.Media)
-        {
-            var mediaDto = new MediaDto
+            foreach (var session in export.Sessions)
             {
-                Id = media.Id,
-                FileName = media.FileName,
-                MimeType = media.MimeType,
-                Data = Convert.FromBase64String(media.Data),
-                CreatedAt = media.CreatedAt
-            };
-            _mediaRepository.Insert(mediaDto);
-        }
-
-        if (export.Scripts != null)
-        {
-            foreach (var script in export.Scripts)
-            {
-                _customScriptRepository.Insert(script);
+                _sessionRepository.Insert(session);
             }
-        }
 
-        return export.Project.Id;
+            foreach (var writeUp in export.WriteUps)
+            {
+                _writeUpRepository.Insert(writeUp);
+            }
+
+            foreach (var media in export.Media)
+            {
+                var mediaDto = new MediaDto
+                {
+                    Id = media.Id,
+                    FileName = media.FileName,
+                    MimeType = media.MimeType,
+                    Data = Convert.FromBase64String(media.Data),
+                    CreatedAt = media.CreatedAt
+                };
+                _mediaRepository.Insert(mediaDto);
+            }
+
+            if (export.Scripts != null)
+            {
+                foreach (var script in export.Scripts)
+                {
+                    _customScriptRepository.Insert(script);
+                }
+            }
+
+            return export.Project.Id;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ProjectService] Import failed for {filePath}: {ex.Message}");
+            throw;
+        }
     }
 }

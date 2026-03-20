@@ -123,6 +123,27 @@ public static class ProjectProtocolSerializer
         return writer.ToArray();
     }
 
+    public static byte[] SerializeListExportsResult(Guid messageId, IEnumerable<ProjectExportMetadata> exports)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectListExportsResult);
+        writer.WriteGuid(messageId);
+
+        var list = exports.ToList();
+        writer.WriteInt32(list.Count);
+
+        foreach (var export in list)
+        {
+            writer.WriteString(export.Filename);
+            writer.WriteInt64(export.SizeBytes);
+            writer.WriteInt32(export.SessionCount);
+            writer.WriteInt32(export.WriteUpCount);
+            writer.WriteInt64(((DateTimeOffset)export.ExportedAt).ToUnixTimeMilliseconds());
+        }
+
+        return writer.ToArray();
+    }
+
     public static byte[] SerializeError(Guid messageId, string error)
         => BinaryProtocolSerializer.SerializeError(MessageType.ProjectOperationError, messageId, error);
 

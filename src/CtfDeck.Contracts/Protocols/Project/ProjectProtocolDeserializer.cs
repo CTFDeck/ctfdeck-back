@@ -262,6 +262,17 @@ public class ProjectImportRequest
     }
 }
 
+public readonly ref struct ProjectListExportsRequest
+{
+    public readonly Guid MessageId;
+
+    public ProjectListExportsRequest(ReadOnlySpan<byte> data)
+    {
+        // Format: [1B type][16B msgId]
+        MessageId = new Guid(data.Slice(1, 16));
+    }
+}
+
 public static class ProjectProtocolDeserializer
 {
     public static bool IsProjectMessage(MessageType type)
@@ -269,6 +280,6 @@ public static class ProjectProtocolDeserializer
         return (type >= MessageType.ProjectCreate && type <= MessageType.ProjectAssignSession)
             || type == MessageType.WriteUpMove
             || (type >= MessageType.ProjectListSessions && type <= MessageType.ProjectListWriteUps)
-            || (type >= MessageType.ProjectExport && type <= MessageType.ProjectImport);
+            || (type >= MessageType.ProjectExport && type <= MessageType.ProjectListExports);
     }
 }

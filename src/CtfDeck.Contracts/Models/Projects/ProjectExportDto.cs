@@ -1,5 +1,12 @@
 namespace CtfDeck.Contracts.Models.Projects;
 
+public record ProjectExportMetadata(
+    string Filename,
+    long SizeBytes,
+    int SessionCount,
+    int WriteUpCount,
+    DateTime ExportedAt);
+
 public sealed class ProjectExportDto
 {
     public int Version { get; set; } = 1;
