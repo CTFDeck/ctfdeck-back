@@ -68,15 +68,15 @@ public class ProjectService
                 using var doc = JsonDocument.Parse(stream);
                 
                 var root = doc.RootElement;
-                var exportedAt = root.TryGetProperty("ExportedAt", out var exportedAtProp) 
+                var exportedAt = (root.TryGetProperty("exportedAt", out var exportedAtProp) || root.TryGetProperty("ExportedAt", out exportedAtProp))
                     ? exportedAtProp.GetDateTime() 
                     : info.LastWriteTimeUtc;
 
-                var sessions = root.TryGetProperty("Sessions", out var sessionsProp) 
+                var sessions = root.TryGetProperty("sessions", out var sessionsProp) || root.TryGetProperty("Sessions", out sessionsProp)
                     ? sessionsProp.GetArrayLength() 
                     : 0;
 
-                var writeUps = root.TryGetProperty("WriteUps", out var writeUpsProp) 
+                var writeUps = root.TryGetProperty("writeUps", out var writeUpsProp) || root.TryGetProperty("WriteUps", out writeUpsProp)
                     ? writeUpsProp.GetArrayLength() 
                     : 0;
 
@@ -335,24 +335,26 @@ public class ProjectService
             throw new InvalidOperationException($"Unsupported export version: {export.Version}");
 
         if (_projectRepository.GetById(export.Project.Id) != null)
-            throw new InvalidOperationException("Project already exists");
+        {
+            Delete(export.Project.Id);
+        }
 
         foreach (var session in export.Sessions)
         {
             if (_sessionRepository.GetById(session.Id) != null)
-                throw new InvalidOperationException($"Session {session.Id} already exists");
+                _sessionRepository.Delete(session.Id);
         }
 
         foreach (var writeUp in export.WriteUps)
         {
             if (_writeUpRepository.GetById(writeUp.Id) != null)
-                throw new InvalidOperationException($"WriteUp {writeUp.Id} already exists");
+                _writeUpRepository.Delete(writeUp.Id);
         }
 
         foreach (var media in export.Media)
         {
             if (_mediaRepository.GetById(media.Id) != null)
-                throw new InvalidOperationException($"Media {media.Id} already exists");
+                _mediaRepository.Delete(media.Id);
         }
 
         try
