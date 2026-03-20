@@ -58,3 +58,4 @@ coveragereport/*
 global.json
 .DS_Store
 .idea
+coverage/*
