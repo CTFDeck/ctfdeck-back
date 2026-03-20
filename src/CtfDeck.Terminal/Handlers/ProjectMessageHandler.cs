@@ -101,7 +101,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
 
     private byte[] HandleAssignSession(ReadOnlySpan<byte> data)
     {
-        var request = new ProjectAssignSessionRequest(data) ;
+        var request = new ProjectAssignSessionRequest(data);
         var success = _projectService.AssignSession(request.SessionId, request.ProjectId, request.FolderId ?? Guid.Empty);
         return ProjectProtocolSerializer.SerializeAssignSessionResult(request.MessageId, success);
     }

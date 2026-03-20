@@ -46,7 +46,7 @@ public class ToolMessageHandlerTests
         byte[]? finalResponse = null;
         await _handler.TryHandleAsync("client1", requestData, data =>
         {
-            if (progressResponses != null && 
+            if (progressResponses != null &&
                (data[0] == (byte)MessageType.ToolInstallProgress || data[0] == (byte)MessageType.ToolInventoryResult))
             {
                 progressResponses.Add(data);
@@ -57,7 +57,7 @@ public class ToolMessageHandlerTests
             }
             return Task.CompletedTask;
         }, CancellationToken.None);
-        
+
         return finalResponse!;
     }
 
@@ -68,7 +68,7 @@ public class ToolMessageHandlerTests
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.ToolInventoryRequest);
         writer.WriteGuid(msgId);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.ToolInventoryResult);
@@ -85,7 +85,7 @@ public class ToolMessageHandlerTests
         writer.WriteGuid(msgId);
         writer.WriteInt32(1);
         writer.WriteString("my-tool");
-        
+
         var progressResponses = new List<byte[]>();
         var response = await SendMessageAsync(writer.ToArray(), progressResponses);
 
@@ -95,7 +95,7 @@ public class ToolMessageHandlerTests
 
         // Allow background task to execute
         await Task.Delay(100);
-        
+
         progressResponses.Should().Contain(x => x[0] == (byte)MessageType.ToolInstallProgress);
         progressResponses.Should().Contain(x => x[0] == (byte)MessageType.ToolInventoryResult);
     }

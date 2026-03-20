@@ -36,7 +36,7 @@ public class WriteUpMessageHandlerTests : IDisposable
             responseData = data;
             return Task.CompletedTask;
         }, CancellationToken.None);
-        
+
         return responseData!;
     }
 
@@ -50,13 +50,13 @@ public class WriteUpMessageHandlerTests : IDisposable
         writer.WriteGuid(msgId);
         writer.WriteGuid(sessionId);
         writer.WriteString("My WriteUp");
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.WriteUpCreateResult);
         response[17].Should().Be(1); // Success
         var writeUpId = new Guid(response.AsSpan(18, 16));
-        
+
         var writeUp = _service.GetById(writeUpId);
         writeUp.Should().NotBeNull();
         writeUp!.Name.Should().Be("My WriteUp");
@@ -67,12 +67,12 @@ public class WriteUpMessageHandlerTests : IDisposable
     {
         var writeUp = _service.Create(Guid.NewGuid(), "My WriteUp");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpLoad);
         writer.WriteGuid(msgId);
         writer.WriteGuid(writeUp.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.WriteUpLoadResult);
@@ -85,7 +85,7 @@ public class WriteUpMessageHandlerTests : IDisposable
         var sessionId = Guid.NewGuid();
         _service.Create(sessionId, "WU1");
         _service.Create(sessionId, "WU2");
-        
+
         var msgId = Guid.NewGuid();
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpList);
@@ -94,7 +94,7 @@ public class WriteUpMessageHandlerTests : IDisposable
         writer.WriteInt32(0); // Offset
         writer.WriteInt32(10); // Limit
         writer.WriteByte(0); // UnassignedOnly
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.WriteUpListResult);
@@ -107,19 +107,19 @@ public class WriteUpMessageHandlerTests : IDisposable
     {
         var writeUp = _service.Create(Guid.NewGuid(), "Old Name");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpUpdate);
         writer.WriteGuid(msgId);
         writer.WriteGuid(writeUp.Id);
         writer.WriteString("New Name");
         writer.WriteString("New Content");
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.WriteUpUpdateResult);
         response[17].Should().Be(1); // Success
-        
+
         var updated = _service.GetById(writeUp.Id);
         updated!.Name.Should().Be("New Name");
         updated.Content.Should().Be("New Content");
@@ -130,17 +130,17 @@ public class WriteUpMessageHandlerTests : IDisposable
     {
         var writeUp = _service.Create(Guid.NewGuid(), "To Delete");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpDelete);
         writer.WriteGuid(msgId);
         writer.WriteGuid(writeUp.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.WriteUpDeleteResult);
         response[17].Should().Be(1); // Success
-        
+
         _service.GetById(writeUp.Id).Should().BeNull();
     }
 }

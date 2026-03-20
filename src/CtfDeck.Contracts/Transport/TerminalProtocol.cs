@@ -15,9 +15,9 @@ public sealed class WebSocketCommand
         reader.ReadByte(); // type: CommandExecute
         var cmd = reader.ReadString();
         var id = reader.ReadGuid();
-        return new WebSocketCommand 
-        { 
-            MessageId = id, 
+        return new WebSocketCommand
+        {
+            MessageId = id,
             Command = cmd,
             CommandLength = cmd.Length,
             CommandBytes = Encoding.UTF8.GetBytes(cmd)

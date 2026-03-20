@@ -36,7 +36,7 @@ public class MediaMessageHandlerTests : IDisposable
             responseData = data;
             return Task.CompletedTask;
         }, CancellationToken.None);
-        
+
         return responseData!;
     }
 
@@ -49,17 +49,17 @@ public class MediaMessageHandlerTests : IDisposable
         writer.WriteGuid(msgId);
         writer.WriteString("test.png");
         writer.WriteString("image/png");
-        
+
         var bytes = new byte[] { 1, 2, 3, 4 };
         writer.WriteInt32(bytes.Length);
         writer.WriteBytes(bytes);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.MediaUploadResult);
         response[17].Should().Be(1); // Success
         var mediaId = new Guid(response.AsSpan(18, 16));
-        
+
         var media = _service.GetById(mediaId);
         media.Should().NotBeNull();
         media!.FileName.Should().Be("test.png");
@@ -71,12 +71,12 @@ public class MediaMessageHandlerTests : IDisposable
     {
         var media = _service.Create("doc.pdf", "application/pdf", new byte[] { 0x41 });
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.MediaLoad);
         writer.WriteGuid(msgId);
         writer.WriteGuid(media.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.MediaLoadResult);
@@ -89,11 +89,11 @@ public class MediaMessageHandlerTests : IDisposable
         _service.Create("img1.png", "image/png", new byte[] { 1 });
         _service.Create("img2.png", "image/png", new byte[] { 2 });
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.MediaList);
         writer.WriteGuid(msgId);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.MediaListResult);
@@ -106,17 +106,17 @@ public class MediaMessageHandlerTests : IDisposable
     {
         var media = _service.Create("To Delete", "text/plain", new byte[0]);
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.MediaDelete);
         writer.WriteGuid(msgId);
         writer.WriteGuid(media.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.MediaDeleteResult);
         response[17].Should().Be(1); // Success
-        
+
         _service.GetById(media.Id).Should().BeNull();
     }
 }

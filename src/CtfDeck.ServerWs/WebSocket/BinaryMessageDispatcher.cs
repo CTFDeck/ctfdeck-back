@@ -33,67 +33,67 @@ public sealed class BinaryMessageDispatcher
         switch (protocolType)
         {
             case MessageType.CommandExecute:
-            {
-                var messageDataCopy = message.ToArray();
-                var command = WebSocketCommand.Deserialize(messageDataCopy);
-                var trimmedCommand = command.Command.Trim();
-
-                if (trimmedCommand.StartsWith("cd ", StringComparison.Ordinal) || trimmedCommand == "cd")
                 {
-                    await _processCdAsync(ctx, command);
-                }
-                else
-                {
-                    _ = Task.Run(() => _processStreamingAsync(ctx, command), cancellationToken);
-                }
+                    var messageDataCopy = message.ToArray();
+                    var command = WebSocketCommand.Deserialize(messageDataCopy);
+                    var trimmedCommand = command.Command.Trim();
 
-                break;
-            }
+                    if (trimmedCommand.StartsWith("cd ", StringComparison.Ordinal) || trimmedCommand == "cd")
+                    {
+                        await _processCdAsync(ctx, command);
+                    }
+                    else
+                    {
+                        _ = Task.Run(() => _processStreamingAsync(ctx, command), cancellationToken);
+                    }
+
+                    break;
+                }
 
             case MessageType.CommandKill:
-            {
-                var killCommandId = new CommandKillReader(message.Span).CommandId;
-                await _handleKillAsync(ctx, killCommandId);
-                break;
-            }
+                {
+                    var killCommandId = new CommandKillReader(message.Span).CommandId;
+                    await _handleKillAsync(ctx, killCommandId);
+                    break;
+                }
 
             case MessageType.PasswordProvide:
-            {
-                var reader = new PasswordProvideReader(message.Span);
-                var password = reader.PasswordLength == 0 ? null : reader.GetPassword();
-
-                if (ctx.SudoWaiters.TryRemove(reader.MessageId, out var waiter))
                 {
-                    waiter.TrySetResult(password);
-                }
+                    var reader = new PasswordProvideReader(message.Span);
+                    var password = reader.PasswordLength == 0 ? null : reader.GetPassword();
 
-                break;
-            }
+                    if (ctx.SudoWaiters.TryRemove(reader.MessageId, out var waiter))
+                    {
+                        waiter.TrySetResult(password);
+                    }
+
+                    break;
+                }
 
             default:
-            {
-                var handled = false;
-
-                foreach (var handler in _messageHandlers)
                 {
-                    if (await handler.TryHandleAsync(
-                            clientId,
-                            message,
-                            payload => ctx.Sender.SendAsync(payload, cancellationToken),
-                            cancellationToken))
+                    var handled = false;
+
+                    foreach (var handler in _messageHandlers)
                     {
-                        handled = true;
-                        break;
+                        if (await handler.TryHandleAsync(
+                                clientId,
+                                message,
+                                payload => ctx.Sender.SendAsync(payload, cancellationToken),
+                                cancellationToken))
+                        {
+                            handled = true;
+                            break;
+                        }
                     }
-                }
 
-                if (!handled)
-                {
-                    _log($"Unknown message from client {clientId}: type={message.Span[0]}, size={message.Length}");
-                }
+                    if (!handled)
+                    {
+                        _log($"Unknown message from client {clientId}: type={message.Span[0]}, size={message.Length}");
+                    }
 
-                break;
-            }
+                    break;
+                }
         }
     }
 }

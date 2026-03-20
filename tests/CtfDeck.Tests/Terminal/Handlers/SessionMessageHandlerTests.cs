@@ -38,7 +38,7 @@ public class SessionMessageHandlerTests : IDisposable
             responseData = data;
             return Task.CompletedTask;
         }, CancellationToken.None);
-        
+
         return responseData!;
     }
 
@@ -50,13 +50,13 @@ public class SessionMessageHandlerTests : IDisposable
         writer.WriteByte((byte)MessageType.SessionCreate);
         writer.WriteGuid(msgId);
         writer.WriteString("Test Session");
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.SessionCreateResult);
         response[17].Should().Be(1); // Success
         var sessionId = new Guid(response.AsSpan(18, 16));
-        
+
         var session = _service.GetById(sessionId);
         session.Should().NotBeNull();
         session!.Name.Should().Be("Test Session");
@@ -67,17 +67,17 @@ public class SessionMessageHandlerTests : IDisposable
     {
         var session = _service.Create("My Session");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionSetActive);
         writer.WriteGuid(msgId);
         writer.WriteGuid(session.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.SessionSetActiveResult);
         response[17].Should().Be(1); // Success
-        
+
         _activeSessionManager.GetActiveSession("client1").Should().Be(session.Id);
     }
 
@@ -86,12 +86,12 @@ public class SessionMessageHandlerTests : IDisposable
     {
         var session = _service.Create("My Session");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionLoad);
         writer.WriteGuid(msgId);
         writer.WriteGuid(session.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.SessionLoadResult);
@@ -104,14 +104,14 @@ public class SessionMessageHandlerTests : IDisposable
         _service.Create("Session1");
         _service.Create("Session2");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionList);
         writer.WriteGuid(msgId);
         writer.WriteInt32(0); // Offset
         writer.WriteInt32(10); // Limit
         writer.WriteByte(0); // UnassignedOnly
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.SessionListResult);
@@ -124,17 +124,17 @@ public class SessionMessageHandlerTests : IDisposable
     {
         var session = _service.Create("To Delete");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionDelete);
         writer.WriteGuid(msgId);
         writer.WriteGuid(session.Id);
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.SessionDeleteResult);
         response[17].Should().Be(1); // Success
-        
+
         _service.GetById(session.Id).Should().BeNull();
     }
 
@@ -143,19 +143,19 @@ public class SessionMessageHandlerTests : IDisposable
     {
         var session = _service.Create("Old Name");
         var msgId = Guid.NewGuid();
-        
+
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.SessionUpdate);
         writer.WriteGuid(msgId);
         writer.WriteGuid(session.Id);
         writer.WriteString("New Name");
         writer.WriteString("New Desc");
-        
+
         var response = await SendMessageAsync(writer.ToArray());
 
         response[0].Should().Be((byte)MessageType.SessionUpdateResult);
         response[17].Should().Be(1); // Success
-        
+
         var updated = _service.GetById(session.Id);
         updated!.Name.Should().Be("New Name");
         updated.Description.Should().Be("New Desc");
@@ -165,14 +165,14 @@ public class SessionMessageHandlerTests : IDisposable
     public async Task AddEditDeleteTarget_ShouldWork()
     {
         var session = _service.Create("Target Session");
-        
+
         // Add
         var addMsgId = Guid.NewGuid();
         using var addWriter = new PooledBufferWriter();
         addWriter.WriteByte((byte)MessageType.SessionAddTarget);
         addWriter.WriteGuid(addMsgId);
         addWriter.WriteGuid(session.Id);
-        
+
         var targetId = Guid.NewGuid();
         addWriter.WriteGuid(targetId);
         addWriter.WriteString("10.10.10.10");
@@ -180,29 +180,29 @@ public class SessionMessageHandlerTests : IDisposable
         addWriter.WriteString("Web");
         addWriter.WriteString("My Web Server");
         addWriter.WriteInt32((int)TargetType.Web);
-        
+
         var addResp = await SendMessageAsync(addWriter.ToArray());
         addResp[0].Should().Be((byte)MessageType.SessionAddTargetResult);
         addResp[17].Should().Be(1);
-        
+
         // Edit
         var editMsgId = Guid.NewGuid();
         using var editWriter = new PooledBufferWriter();
         editWriter.WriteByte((byte)MessageType.SessionEditTarget);
         editWriter.WriteGuid(editMsgId);
         editWriter.WriteGuid(session.Id);
-        
+
         editWriter.WriteGuid(targetId);
         editWriter.WriteString("10.10.10.11"); // changed IP
         editWriter.WriteInt32(443);
         editWriter.WriteString("Web Secure");
         editWriter.WriteString("My Web Server Secure");
         editWriter.WriteInt32((int)TargetType.Web);
-        
+
         var editResp = await SendMessageAsync(editWriter.ToArray());
         editResp[0].Should().Be((byte)MessageType.SessionEditTargetResult);
         editResp[17].Should().Be(1);
-        
+
         // Delete
         var delMsgId = Guid.NewGuid();
         using var delWriter = new PooledBufferWriter();
@@ -210,7 +210,7 @@ public class SessionMessageHandlerTests : IDisposable
         delWriter.WriteGuid(delMsgId);
         delWriter.WriteGuid(session.Id);
         delWriter.WriteGuid(targetId);
-        
+
         var delResp = await SendMessageAsync(delWriter.ToArray());
         delResp[0].Should().Be((byte)MessageType.SessionDeleteTargetResult);
         delResp[17].Should().Be(1);

@@ -22,7 +22,7 @@ public ref struct BinaryProtocolReader
         if (_offset >= _data.Length) throw new IndexOutOfRangeException("ReadByte: End of data reached.");
         return _data[_offset++];
     }
-    
+
     public (MessageType Type, Guid MessageId) ReadHeader()
     {
         var type = (MessageType)ReadByte();
