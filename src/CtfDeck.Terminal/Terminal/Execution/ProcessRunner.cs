@@ -88,29 +88,32 @@ public static class ProcessRunner
     {
         var buffer = new char[4096];
 
-        while (!ct.IsCancellationRequested)
+        try
         {
-            int read;
-            try
+            while (!ct.IsCancellationRequested)
             {
-                read = await reader.ReadAsync(buffer, 0, buffer.Length);
-            }
-            catch
-            {
-                break;
-            }
+                int read = await reader.ReadAsync(buffer.AsMemory(), ct);
 
-            if (read <= 0) break;
+                if (read <= 0) break;
 
-            var chunk = new string(buffer, 0, read);
-            builder.Append(chunk);
+                var chunk = new string(buffer, 0, read);
+                builder.Append(chunk);
 
-            try
-            {
-                await onOutput(chunk, isError);
+                try
+                {
+                    await onOutput(chunk, isError);
+                }
+                catch
+                { /* ignore */ }
             }
-            catch
-            { /* ignore */ }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal when process is killed or timed out
+        }
+        catch (Exception)
+        {
+            // Pipe might be closed
         }
     }
 

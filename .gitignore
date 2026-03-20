@@ -60,3 +60,6 @@ global.json
 .idea
 coverage/*
 CtfDeck.sln.DotSettings.user
+
+# Go comment audit tool
+tools/comment-audit/*

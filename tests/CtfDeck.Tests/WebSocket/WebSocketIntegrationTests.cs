@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Text;
+using System.Runtime.InteropServices;
 using CtfDeck.ServerWs.WebSocket;
 using CtfDeck.Contracts.Transport;
 using FluentAssertions;
@@ -54,50 +55,61 @@ public class WebSocketIntegrationTests : IDisposable
         return (ms.ToArray(), result.MessageType);
     }
 
-    private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct)
+    private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct, int timeoutMs = 10000)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeoutMs);
+        var token = cts.Token;
+
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
 
         var messageId = Guid.Empty;
 
-        while (true)
+        try
         {
-            var (data, msgType) = await ReceiveFullMessageBytesAsync(client, ct);
-            if (msgType == WebSocketMessageType.Close) break;
+            while (true)
+            {
+                var (data, msgType) = await ReceiveFullMessageBytesAsync(client, token);
+                if (msgType == WebSocketMessageType.Close) break;
 
-            var type = (MessageType)data[0];
+                var type = (MessageType)data[0];
 
-            if (type == MessageType.CompleteResponse)
-            {
-                return WebSocketResponse.Deserialize(data);
-            }
-            else if (type == MessageType.StreamOutput)
-            {
-                var chunk = StreamChunkMessage.Deserialize(data);
-                stdout.Append(chunk.Data);
-                messageId = chunk.MessageId;
-            }
-            else if (type == MessageType.StreamError)
-            {
-                var chunk = StreamChunkMessage.Deserialize(data);
-                stderr.Append(chunk.Data);
-                messageId = chunk.MessageId;
-            }
-            else if (type == MessageType.StreamEnd)
-            {
-                var endMsg = StreamEndMessage.Deserialize(data);
-                return WebSocketResponse.FromResult(
-                    endMsg.ExitCode,
-                    stdout.ToString(),
-                    stderr.ToString(),
-                    endMsg.WorkingDirectory,
-                    endMsg.MessageId
-                );
+                if (type == MessageType.CompleteResponse)
+                {
+                    return WebSocketResponse.Deserialize(data);
+                }
+                else if (type == MessageType.StreamOutput)
+                {
+                    var chunk = StreamChunkMessage.Deserialize(data);
+                    stdout.Append(chunk.Data);
+                    messageId = chunk.MessageId;
+                }
+                else if (type == MessageType.StreamError)
+                {
+                    var chunk = StreamChunkMessage.Deserialize(data);
+                    stderr.Append(chunk.Data);
+                    messageId = chunk.MessageId;
+                }
+                else if (type == MessageType.StreamEnd)
+                {
+                    var endMsg = StreamEndMessage.Deserialize(data);
+                    return WebSocketResponse.FromResult(
+                        endMsg.ExitCode,
+                        stdout.ToString(),
+                        stderr.ToString(),
+                        endMsg.WorkingDirectory,
+                        endMsg.MessageId
+                    );
+                }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Timeout or cancellation
+        }
 
-        return new WebSocketResponse { MessageId = messageId };
+        return new WebSocketResponse { MessageId = messageId, ExitCode = -2 }; // -2 indicates timeout/aborted in test
     }
 
     [Fact]
@@ -475,6 +487,77 @@ public class WebSocketIntegrationTests : IDisposable
         // Assert
         client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.Closed || s == WebSocketState.Aborted);
         _server.ConnectedClientCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CommandKill_ShouldCancelRunningCommand()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var client = new ClientWebSocket();
+        await client.ConnectAsync(new Uri("ws://localhost:8095/"), CancellationToken.None);
+
+        // Act - Start a long running command
+        var commandStr = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ping 127.0.0.1 -n 10" : "sleep 10";
+        var messageId = Guid.NewGuid();
+        var cmdBytes = Encoding.UTF8.GetBytes(commandStr);
+        var commandStruct = new WebSocketCommand
+        {
+            Command = commandStr,
+            CommandLength = cmdBytes.Length,
+            CommandBytes = cmdBytes,
+            MessageId = messageId
+        };
+        
+        await client.SendAsync(new ArraySegment<byte>(commandStruct.Serialize()), WebSocketMessageType.Binary, true, CancellationToken.None);
+
+        // Wait a little bit so the command starts
+        await Task.Delay(500);
+
+        // Send Kill Command
+        using var killWriter = new PooledBufferWriter();
+        killWriter.WriteByte((byte)MessageType.CommandKill);
+        killWriter.WriteGuid(messageId);
+        await client.SendAsync(new ArraySegment<byte>(killWriter.ToArray()), WebSocketMessageType.Binary, true, CancellationToken.None);
+
+        // Receive response
+        var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
+
+        // Assert
+        // In the integration test, we might receive the KillResult or the StreamEnd of the cancelled command.
+        // If it's cancelled, the ExitCode should be -1.
+        response.ExitCode.Should().Be(-1);
+    }
+
+    [Fact]
+    public async Task CdCommand_ShouldChangeWorkingDirectory()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var client = new ClientWebSocket();
+        await client.ConnectAsync(new Uri("ws://localhost:8095/"), CancellationToken.None);
+
+        var tempDir = Path.GetTempPath();
+        
+        // Act
+        var messageId = Guid.NewGuid();
+        var commandStr = $"cd {tempDir}";
+        var cmdBytes = Encoding.UTF8.GetBytes(commandStr);
+        var commandStruct = new WebSocketCommand
+        {
+            Command = commandStr,
+            CommandLength = cmdBytes.Length,
+            CommandBytes = cmdBytes,
+            MessageId = messageId
+        };
+        
+        await client.SendAsync(new ArraySegment<byte>(commandStruct.Serialize()), WebSocketMessageType.Binary, true, CancellationToken.None);
+
+        var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
+
+        // Assert
+        response.ExitCode.Should().Be(0);
+        response.WorkingDirectory.TrimEnd(Path.DirectorySeparatorChar).Should().Be(tempDir.TrimEnd(Path.DirectorySeparatorChar));
     }
 
     [Fact]
