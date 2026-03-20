@@ -63,3 +63,7 @@ CtfDeck.sln.DotSettings.user
 
 # Go comment audit tool
 tools/comment-audit/*
+.vscode/settings.json
+
+#go script for annotations
+tools/*

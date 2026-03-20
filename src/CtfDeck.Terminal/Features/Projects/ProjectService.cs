@@ -55,7 +55,7 @@ public class ProjectService
     public IEnumerable<ProjectExportMetadata> GetAvailableExports()
     {
         if (!Directory.Exists(ExportsPath)) return Enumerable.Empty<ProjectExportMetadata>();
-        
+
         var files = Directory.GetFiles(ExportsPath, "*.json");
         var results = new List<ProjectExportMetadata>();
 
@@ -66,18 +66,18 @@ public class ProjectService
                 var info = new FileInfo(file);
                 using var stream = File.OpenRead(file);
                 using var doc = JsonDocument.Parse(stream);
-                
+
                 var root = doc.RootElement;
                 var exportedAt = (root.TryGetProperty("exportedAt", out var exportedAtProp) || root.TryGetProperty("ExportedAt", out exportedAtProp))
-                    ? exportedAtProp.GetDateTime() 
+                    ? exportedAtProp.GetDateTime()
                     : info.LastWriteTimeUtc;
 
                 var sessions = root.TryGetProperty("sessions", out var sessionsProp) || root.TryGetProperty("Sessions", out sessionsProp)
-                    ? sessionsProp.GetArrayLength() 
+                    ? sessionsProp.GetArrayLength()
                     : 0;
 
                 var writeUps = root.TryGetProperty("writeUps", out var writeUpsProp) || root.TryGetProperty("WriteUps", out writeUpsProp)
-                    ? writeUpsProp.GetArrayLength() 
+                    ? writeUpsProp.GetArrayLength()
                     : 0;
 
                 var projectElem = root.TryGetProperty("project", out var pProp) ? pProp : root.TryGetProperty("Project", out pProp) ? pProp : default;
@@ -117,11 +117,11 @@ public class ProjectService
 
         // Remove extension if present to normalize the base name
         var baseName = Path.GetFileNameWithoutExtension(filename);
-        
+
         // Replace invalid characters with underscore
         // Allowed: a-z, A-Z, 0-9, -, _
         baseName = FilenameSanitizationRegex.Replace(baseName, "_");
-        
+
         return baseName + ".json";
     }
 

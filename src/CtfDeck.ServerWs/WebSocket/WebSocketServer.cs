@@ -186,6 +186,20 @@ public class WebSocketServer : IServerHost
                     await CloseWebSocketSafelyAsync(ctx.WebSocket, "Server shutting down");
             }
             catch (WebSocketException) { /* ignore */ }
+            catch (ObjectDisposedException) { /* ignore */ }
+            catch (OperationCanceledException) { /* ignore */ }
+            finally
+            {
+                try
+                {
+                    if (ctx.WebSocket.State != WebSocketState.Closed && ctx.WebSocket.State != WebSocketState.Aborted)
+                    {
+                        ctx.WebSocket.Abort();
+                    }
+                }
+                catch (ObjectDisposedException) { /* ignore */ }
+                catch (WebSocketException) { /* ignore */ }
+            }
         }
 
         foreach (var ctx in _clients.Values)

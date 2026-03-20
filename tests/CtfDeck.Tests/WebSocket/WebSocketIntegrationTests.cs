@@ -539,7 +539,7 @@ public class WebSocketIntegrationTests : IDisposable
         await client.ConnectAsync(new Uri("ws://localhost:8095/"), CancellationToken.None);
 
         var tempDir = Path.GetTempPath();
-        
+
         // Act
         var messageId = Guid.NewGuid();
         var commandStr = $"cd {tempDir}";
@@ -551,7 +551,7 @@ public class WebSocketIntegrationTests : IDisposable
             CommandBytes = cmdBytes,
             MessageId = messageId
         };
-        
+
         await client.SendAsync(new ArraySegment<byte>(commandStruct.Serialize()), WebSocketMessageType.Binary, true, CancellationToken.None);
 
         var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
