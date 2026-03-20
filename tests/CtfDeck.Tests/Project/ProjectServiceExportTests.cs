@@ -225,4 +225,129 @@ public sealed class ProjectServiceExportTests : IDisposable
         var all = _scriptRepo.GetAll();
         all.Should().ContainSingle(s => s.Id == dto.Id && s.Name == "test-insert" && s.Template == "curl {{url}}");
     }
+
+    [Fact]
+    public void GetAvailableExports_ShouldIgnoreCorruptedFile_AndMarkImported()
+    {
+        var (project, _) = SetupProjectWithSession();
+        var validPath = "valid-export.json";
+        var exportsDir = Path.Combine(AppContext.BaseDirectory, "exports");
+        var brokenPath = Path.Combine(exportsDir, "broken-export.json");
+
+        _service.ExportToFile(project.Id, validPath, ExportOptions.All);
+        File.WriteAllText(brokenPath, "{ this is not valid json");
+
+        var exports = _service.GetAvailableExports().ToList();
+
+        exports.Should().ContainSingle(x => x.ProjectId == project.Id);
+        exports.Should().OnlyContain(x => x.Filename != Path.GetFileName(brokenPath));
+        exports.Single(x => x.ProjectId == project.Id).IsAlreadyImported.Should().BeTrue();
+
+        var validFullPath = Path.Combine(exportsDir, "valid-export.json");
+        if (File.Exists(validFullPath)) File.Delete(validFullPath);
+        if (File.Exists(brokenPath)) File.Delete(brokenPath);
+    }
+
+    [Fact]
+    public void ExportToFile_WithRelativeFilename_ShouldNormalizeAndWriteInExportsDirectory()
+    {
+        var (project, _) = SetupProjectWithSession();
+        var weirdRelativeName = "my export@2026!.json";
+
+        _service.ExportToFile(project.Id, weirdRelativeName, ExportOptions.All);
+
+        var exportsDir = Path.Combine(AppContext.BaseDirectory, "exports");
+        var expectedFile = Path.Combine(exportsDir, "my_export_2026_.json");
+        File.Exists(expectedFile).Should().BeTrue();
+
+        // Cleanup file created under AppContext.BaseDirectory
+        File.Delete(expectedFile);
+    }
+
+    [Fact]
+    public void ExportToFile_WithInvalidProject_ShouldThrow()
+    {
+        var action = () => _service.ExportToFile(Guid.NewGuid(), TempFile("missing.json"), ExportOptions.All);
+
+        action.Should().Throw<InvalidOperationException>()
+            .WithMessage("Project not found");
+    }
+
+    [Fact]
+    public void ImportFromFile_FileNotFound_ShouldThrow()
+    {
+        var action = () => _service.ImportFromFile("does-not-exist.json");
+
+        action.Should().Throw<InvalidOperationException>()
+            .WithMessage("File not found*");
+    }
+
+    [Fact]
+    public void ImportFromFile_InvalidJson_ShouldThrow()
+    {
+        var invalidPath = TempFile("invalid-import.json");
+        File.WriteAllText(invalidPath, "{invalid");
+
+        var action = () => _service.ImportFromFile(invalidPath);
+
+        action.Should().Throw<JsonException>();
+    }
+
+    [Fact]
+    public void ImportFromFile_UnsupportedVersion_ShouldThrow()
+    {
+        var (project, _) = SetupProjectWithSession();
+        var path = TempFile("unsupported-version.json");
+        _service.ExportToFile(project.Id, path, ExportOptions.All);
+
+        var export = JsonSerializer.Deserialize<ProjectExportDto>(File.ReadAllText(path), JsonOptions)!;
+        export.Version = 99;
+        File.WriteAllText(path, JsonSerializer.Serialize(export, JsonOptions));
+
+        var action = () => _service.ImportFromFile(path);
+
+        action.Should().Throw<InvalidOperationException>()
+            .WithMessage("Unsupported export version*");
+    }
+
+    [Fact]
+    public void ImportFromFile_WhenMediaDataIsInvalidBase64_ShouldThrow()
+    {
+        var (project, _) = SetupProjectWithSession();
+        var path = TempFile("invalid-media-base64.json");
+        _service.ExportToFile(project.Id, path, ExportOptions.All);
+
+        var export = JsonSerializer.Deserialize<ProjectExportDto>(File.ReadAllText(path), JsonOptions)!;
+        export.Media.Add(new MediaExportDto
+        {
+            Id = Guid.NewGuid(),
+            FileName = "x.bin",
+            MimeType = "application/octet-stream",
+            Data = "*** not base64 ***",
+            CreatedAt = DateTime.UtcNow
+        });
+        File.WriteAllText(path, JsonSerializer.Serialize(export, JsonOptions));
+
+        var action = () => _service.ImportFromFile(path);
+
+        action.Should().Throw<FormatException>();
+    }
+
+    [Fact]
+    public void ExportToFile_ShouldIncludeReferencedMedia_WhenWriteUpsContainMediaUris()
+    {
+        var project = _service.Create("MediaProject", "desc");
+        var customFolder = _projectRepo.AddFolder(project.Id, "notes")!;
+        var media = _mediaRepo.Create("proof.png", "image/png", [1, 2, 3, 4]);
+        var writeUp = _writeUpRepo.Create(null, "WU");
+        _writeUpRepo.Update(writeUp.Id, "WU", $"Look: media://{media.Id}");
+        _writeUpRepo.SetProjectAndFolderId(writeUp.Id, project.Id, customFolder.Id);
+
+        var path = TempFile("with-media.json");
+        _service.ExportToFile(project.Id, path, ExportOptions.All);
+
+        var export = JsonSerializer.Deserialize<ProjectExportDto>(File.ReadAllText(path), JsonOptions)!;
+        export.WriteUps.Should().ContainSingle(w => w.Id == writeUp.Id);
+        export.Media.Should().ContainSingle(m => m.Id == media.Id && m.FileName == "proof.png");
+    }
 }
