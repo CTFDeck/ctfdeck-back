@@ -177,6 +177,8 @@ public class WebSocketServer
                     await ctx.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None);
             }
             catch (WebSocketException) { /* ignore */ }
+            catch (ObjectDisposedException) { /* ignore */ }
+            catch (OperationCanceledException) { /* ignore */ }
             finally
             {
                 try
@@ -186,7 +188,8 @@ public class WebSocketServer
                         ctx.WebSocket.Abort();
                     }
                 }
-                catch { /* ignore */ }
+                catch (ObjectDisposedException) { /* ignore */ }
+                catch (WebSocketException) { /* ignore */ }
             }
         }
 
