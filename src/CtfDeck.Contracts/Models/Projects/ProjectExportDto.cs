@@ -5,7 +5,9 @@ public record ProjectExportMetadata(
     long SizeBytes,
     int SessionCount,
     int WriteUpCount,
-    DateTime ExportedAt);
+    DateTime ExportedAt,
+    Guid ProjectId,
+    bool IsAlreadyImported);
 
 public sealed class ProjectExportDto
 {

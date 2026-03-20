@@ -139,6 +139,8 @@ public static class ProjectProtocolSerializer
             writer.WriteInt32(export.SessionCount);
             writer.WriteInt32(export.WriteUpCount);
             writer.WriteInt64(((DateTimeOffset)export.ExportedAt).ToUnixTimeMilliseconds());
+            writer.WriteGuid(export.ProjectId);
+            writer.WriteByte((byte)(export.IsAlreadyImported ? 1 : 0));
         }
 
         return writer.ToArray();

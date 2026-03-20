@@ -80,12 +80,27 @@ public class ProjectService
                     ? writeUpsProp.GetArrayLength() 
                     : 0;
 
+                var projectElem = root.TryGetProperty("project", out var pProp) ? pProp : root.TryGetProperty("Project", out pProp) ? pProp : default;
+                var projectId = Guid.Empty;
+                if (projectElem.ValueKind != JsonValueKind.Undefined)
+                {
+                    var idProp = projectElem.TryGetProperty("id", out var idP) ? idP : projectElem.TryGetProperty("Id", out idP) ? idP : default;
+                    if (idProp.ValueKind != JsonValueKind.Undefined)
+                    {
+                        projectId = idProp.GetGuid();
+                    }
+                }
+
+                var isAlreadyImported = projectId != Guid.Empty && _projectRepository.GetById(projectId) != null;
+
                 results.Add(new ProjectExportMetadata(
                     info.Name,
                     info.Length,
                     sessions,
                     writeUps,
-                    exportedAt));
+                    exportedAt,
+                    projectId,
+                    isAlreadyImported));
             }
             catch (Exception ex)
             {
