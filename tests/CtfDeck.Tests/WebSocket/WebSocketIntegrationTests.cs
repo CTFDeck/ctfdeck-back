@@ -1,6 +1,6 @@
 using System.Net.WebSockets;
 using System.Text;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.WsServer.WebSocket;
 using CtfDeck.Contracts.Transport;
 using FluentAssertions;
 

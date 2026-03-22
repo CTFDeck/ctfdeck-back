@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -15,7 +15,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CtfDeck.Contracts", "src\Ct
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CtfDeck.Data", "src\CtfDeck.Data\CtfDeck.Data.csproj", "{BA68D2AA-B0BE-4C8B-AD7C-B374A716865F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CtfDeck.ServerWs", "src\CtfDeck.ServerWs\CtfDeck.ServerWs.csproj", "{4622F145-00FA-4BE3-939C-2CD67CAFC958}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CtfDeck.WsServer", "src\CtfDeck.WsServer\CtfDeck.WsServer.csproj", "{4622F145-00FA-4BE3-939C-2CD67CAFC958}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CtfDeck.Abstractions", "src\CtfDeck.Abstractions\CtfDeck.Abstractions.csproj", "{AEB57DED-AF59-40F6-AB5C-693A48A554E2}"
 EndProject

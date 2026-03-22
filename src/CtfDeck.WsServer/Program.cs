@@ -1,5 +1,5 @@
-using CtfDeck.ServerWs;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.WsServer;
+using CtfDeck.WsServer.WebSocket;
 
 var server = new WebSocketServer("localhost", 42712);
 using var runner = new ServerHostRunner(server);

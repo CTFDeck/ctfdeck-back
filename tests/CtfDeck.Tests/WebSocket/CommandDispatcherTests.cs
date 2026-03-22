@@ -3,7 +3,7 @@ using CtfDeck.Contracts.Models.Sessions;
 using CtfDeck.Contracts.Transport;
 using CtfDeck.Data.Db;
 using CtfDeck.Data.Repositories.Sessions;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.WsServer.WebSocket;
 using CtfDeck.Terminal.Features.Sessions;
 using FluentAssertions;
 

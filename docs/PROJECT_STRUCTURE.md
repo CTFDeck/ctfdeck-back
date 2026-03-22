@@ -15,7 +15,7 @@ This document provides an overview of the CTFDeck Backend repository structure, 
 
 The backend is currently consolidated into a main project:
 
-### CtfDeck.ServerWs
+### CtfDeck.WsServer
 
 Entry point and WebSocket server. Composition root that wires all dependencies manually (no DI container).
 

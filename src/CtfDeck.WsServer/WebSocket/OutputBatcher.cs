@@ -3,7 +3,7 @@ using System.Threading.Channels;
 using System.Text;
 using CtfDeck.Contracts.Transport;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.WsServer.WebSocket;
 
 /// <summary>
 /// High-performance output batcher that coalesces rapid outputs into fewer WebSocket sends.

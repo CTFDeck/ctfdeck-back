@@ -3,7 +3,7 @@ using System.Text;
 using FluentAssertions;
 using Xunit;
 using CtfDeck.Contracts.Transport;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.WsServer.WebSocket;
 
 
 namespace CtfDeck.Tests.WebSocket;

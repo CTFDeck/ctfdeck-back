@@ -1,6 +1,6 @@
 using System.Net.WebSockets;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.WsServer.WebSocket;
 
 public sealed class WebSocketSender
 {

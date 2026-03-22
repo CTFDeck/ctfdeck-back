@@ -1,5 +1,5 @@
 using System.Net;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.WsServer.WebSocket;
 using FluentAssertions;
 
 namespace CtfDeck.Tests.WebSocket;

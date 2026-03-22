@@ -1,4 +1,4 @@
-namespace CtfDeck.ServerWs;
+namespace CtfDeck.WsServer;
 
 public interface IServerHost
 {

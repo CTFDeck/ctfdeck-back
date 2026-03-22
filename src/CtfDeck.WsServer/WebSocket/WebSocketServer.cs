@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 
-using CtfDeck.ServerWs;
+using CtfDeck.WsServer;
 using CtfDeck.Abstractions.Ports.Scripts;
 using CtfDeck.Abstractions.Ports.Sessions;
 using CtfDeck.Abstractions.Ports.WriteUps;
@@ -36,7 +36,7 @@ using CtfDeck.Terminal.Features.Tools;
 
 using CtfDeck.Contracts.Protocols.Tools;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.WsServer.WebSocket;
 
 public class WebSocketServer : IServerHost
 {

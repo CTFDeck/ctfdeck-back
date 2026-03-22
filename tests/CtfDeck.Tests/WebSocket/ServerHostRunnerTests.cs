@@ -1,4 +1,4 @@
-using CtfDeck.ServerWs;
+using CtfDeck.WsServer;
 using FluentAssertions;
 
 namespace CtfDeck.Tests.WebSocket;

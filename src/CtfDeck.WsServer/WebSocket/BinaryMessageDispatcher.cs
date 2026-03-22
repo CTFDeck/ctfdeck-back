@@ -1,7 +1,7 @@
 using CtfDeck.Contracts.Transport;
 using CtfDeck.Terminal.Handlers;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.WsServer.WebSocket;
 
 public sealed class BinaryMessageDispatcher
 {
