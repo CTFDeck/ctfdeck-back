@@ -30,7 +30,13 @@ public sealed class ProjectRepository : IProjectRepository
                 new()
                 {
                     Id = Guid.NewGuid(),
-                    Name = "Report",
+                    Name = "chats",
+                    IsSystem = true
+                },
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "writeups",
                     IsSystem = true
                 }
             }
@@ -53,12 +59,17 @@ public sealed class ProjectRepository : IProjectRepository
         }
     }
 
-    public IEnumerable<ProjectMetadataDto> GetAllMetadata()
+    public (IEnumerable<ProjectMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.Projects
-                .FindAll()
+            var query = _context.Projects.FindAll();
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(p => p.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(p => new ProjectMetadataDto
                 {
                     Id = p.Id,
@@ -69,6 +80,8 @@ public sealed class ProjectRepository : IProjectRepository
                     FolderCount = p.Folders?.Count ?? 0
                 })
                 .ToList();
+
+            return (items, totalCount);
         }
     }
 
@@ -95,7 +108,7 @@ public sealed class ProjectRepository : IProjectRepository
         }
     }
 
-    public ProjectFolderDto? AddFolder(Guid projectId, string name)
+    public ProjectFolderDto? AddFolder(Guid projectId, string name, Guid? parentId = null)
     {
         lock (_lock)
         {
@@ -105,6 +118,7 @@ public sealed class ProjectRepository : IProjectRepository
             var folder = new ProjectFolder
             {
                 Id = Guid.NewGuid(),
+                ParentId = parentId,
                 Name = name,
                 IsSystem = false
             };
@@ -118,6 +132,7 @@ public sealed class ProjectRepository : IProjectRepository
             return new ProjectFolderDto
             {
                 Id = folder.Id,
+                ParentId = folder.ParentId,
                 Name = folder.Name,
                 IsSystem = folder.IsSystem
             };
@@ -185,6 +200,7 @@ public sealed class ProjectRepository : IProjectRepository
         Folders = (p.Folders ?? new List<ProjectFolder>()).Select(f => new ProjectFolderDto
         {
             Id = f.Id,
+            ParentId = f.ParentId,
             Name = f.Name ?? "",
             IsSystem = f.IsSystem
         }).ToList()

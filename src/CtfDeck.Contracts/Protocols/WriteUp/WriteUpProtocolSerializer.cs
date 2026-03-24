@@ -21,12 +21,13 @@ public static class WriteUpProtocolSerializer
     public static byte[] SerializeDeleteResult(Guid messageId, bool success)
         => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.WriteUpDeleteResult, messageId, success);
 
-    public static byte[] SerializeListResult(Guid messageId, List<WriteUpMetadataDto> writeUps)
+    public static byte[] SerializeListResult(Guid messageId, List<WriteUpMetadataDto> writeUps, int totalCount)
     {
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.WriteUpListResult);
         writer.WriteGuid(messageId);
         writer.WriteInt32(writeUps.Count);
+        writer.WriteInt32(totalCount);
 
         foreach (var writeUp in writeUps)
         {
@@ -46,7 +47,8 @@ public static class WriteUpProtocolSerializer
         if (success && writeUp != null)
         {
             writer.WriteGuid(writeUp.Id);
-            writer.WriteGuid(writeUp.SessionId);
+            writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
+            writer.WriteGuid(writeUp.ProjectId ?? Guid.Empty);
             writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
             writer.WriteString(writeUp.Name);
             writer.WriteString(writeUp.Content);
@@ -63,7 +65,8 @@ public static class WriteUpProtocolSerializer
     private static void WriteWriteUpMetadata(PooledBufferWriter writer, WriteUpMetadataDto writeUp)
     {
         writer.WriteGuid(writeUp.Id);
-        writer.WriteGuid(writeUp.SessionId);
+        writer.WriteGuid(writeUp.SessionId ?? Guid.Empty);
+        writer.WriteGuid(writeUp.ProjectId ?? Guid.Empty);
         writer.WriteGuid(writeUp.FolderId ?? Guid.Empty);
         writer.WriteString(writeUp.Name);
         writer.WriteInt64(writeUp.CreatedAt.Ticks);

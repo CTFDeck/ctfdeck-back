@@ -10,4 +10,5 @@ public sealed class SessionMetadataDto
     public int HistoryCount { get; set; }
     public int TargetCount { get; set; }
     public Guid? ProjectId { get; set; }
+    public Guid? FolderId { get; set; }
 }

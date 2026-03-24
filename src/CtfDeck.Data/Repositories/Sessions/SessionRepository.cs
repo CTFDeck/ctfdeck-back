@@ -44,12 +44,20 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
-    public IEnumerable<SessionMetadataDto> GetAllMetadata()
+    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50, bool unassignedOnly = false)
     {
         lock (_lock)
         {
-            return _context.Sessions
-                .FindAll()
+            var query = unassignedOnly
+                ? _context.Sessions.Find(s => s.ProjectId == null)
+                : _context.Sessions.FindAll();
+
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(s => s.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(s => new SessionMetadataDto
                 {
                     Id = s.Id,
@@ -59,9 +67,12 @@ public sealed class SessionRepository : ISessionRepository
                     UpdatedAt = s.UpdatedAt,
                     HistoryCount = s.History?.Count ?? 0,
                     TargetCount = s.Targets?.Count ?? 0,
-                    ProjectId = s.ProjectId
+                    ProjectId = s.ProjectId,
+                    FolderId = s.FolderId
                 })
                 .ToList();
+
+            return (items, totalCount);
         }
     }
 
@@ -185,12 +196,17 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
-    public IEnumerable<SessionMetadataDto> GetByProjectId(Guid projectId)
+    public (IEnumerable<SessionMetadataDto> Items, int TotalCount) GetByProjectId(Guid projectId, int offset = 0, int limit = 50)
     {
         lock (_lock)
         {
-            return _context.Sessions
-                .Find(s => s.ProjectId == projectId)
+            var query = _context.Sessions.Find(s => s.ProjectId == projectId);
+            var totalCount = query.Count();
+
+            var items = query
+                .OrderByDescending(s => s.CreatedAt)
+                .Skip(offset)
+                .Take(limit)
                 .Select(s => new SessionMetadataDto
                 {
                     Id = s.Id,
@@ -200,9 +216,12 @@ public sealed class SessionRepository : ISessionRepository
                     UpdatedAt = s.UpdatedAt,
                     HistoryCount = s.History?.Count ?? 0,
                     TargetCount = s.Targets?.Count ?? 0,
-                    ProjectId = s.ProjectId
+                    ProjectId = s.ProjectId,
+                    FolderId = s.FolderId
                 })
                 .ToList();
+
+            return (items, totalCount);
         }
     }
 
@@ -217,6 +236,60 @@ public sealed class SessionRepository : ISessionRepository
             model.UpdatedAt = DateTime.UtcNow;
 
             return _context.Sessions.Update(model);
+        }
+    }
+
+    public bool SetFolderId(Guid sessionId, Guid? folderId)
+    {
+        lock (_lock)
+        {
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return false;
+
+            model.FolderId = folderId;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.Sessions.Update(model);
+        }
+    }
+
+    public bool SetProjectAndFolderId(Guid sessionId, Guid? projectId, Guid? folderId)
+    {
+        lock (_lock)
+        {
+            var model = _context.Sessions.FindById(sessionId);
+            if (model == null) return false;
+
+            model.ProjectId = projectId;
+            model.FolderId = folderId;
+            model.UpdatedAt = DateTime.UtcNow;
+
+            return _context.Sessions.Update(model);
+        }
+    }
+
+    public IEnumerable<SessionMetadataDto> GetByFolderId(Guid folderId)
+    {
+        lock (_lock)
+        {
+            var query = _context.Sessions.Find(s => s.FolderId == folderId);
+
+            var items = query
+                .Select(s => new SessionMetadataDto
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    Description = s.Description,
+                    CreatedAt = s.CreatedAt,
+                    UpdatedAt = s.UpdatedAt,
+                    HistoryCount = s.History?.Count ?? 0,
+                    TargetCount = s.Targets?.Count ?? 0,
+                    ProjectId = s.ProjectId,
+                    FolderId = s.FolderId
+                })
+                .ToList();
+
+            return items;
         }
     }
 
@@ -241,6 +314,7 @@ public sealed class SessionRepository : ISessionRepository
         CreatedAt = s.CreatedAt,
         UpdatedAt = s.UpdatedAt,
         ProjectId = s.ProjectId,
+        FolderId = s.FolderId,
         History = (s.History ?? new List<HistoryEntry>()).Select(h => new HistoryEntryDto
         {
             Id = h.Id,

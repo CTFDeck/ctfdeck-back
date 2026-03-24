@@ -63,8 +63,8 @@ public sealed class SessionMessageHandler : MessageHandlerBase
     private byte[] HandleList(ReadOnlySpan<byte> data)
     {
         var request = new SessionListRequest(data);
-        var sessions = _sessionService.GetAllMetadata();
-        return SessionProtocolSerializer.SerializeListResult(request.MessageId, sessions);
+        var result = _sessionService.GetAllMetadata(request.Offset, request.Limit, request.UnassignedOnly);
+        return SessionProtocolSerializer.SerializeListResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleDelete(ReadOnlySpan<byte> data)

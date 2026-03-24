@@ -29,16 +29,17 @@ public class ProjectService
     public ProjectDto? GetById(Guid id)
         => _projectRepository.GetById(id);
 
-    public IEnumerable<ProjectMetadataDto> GetAllMetadata()
+    public (IEnumerable<ProjectMetadataDto> Items, int TotalCount) GetAllMetadata(int offset = 0, int limit = 50)
     {
-        var projects = _projectRepository.GetAllMetadata().ToList();
+        var result = _projectRepository.GetAllMetadata(offset, limit);
+        var projects = result.Items.ToList();
 
         foreach (var project in projects)
         {
-            project.SessionCount = _sessionRepository.GetByProjectId(project.Id).Count();
+            project.SessionCount = _sessionRepository.GetByProjectId(project.Id).TotalCount;
         }
 
-        return projects;
+        return (projects, result.TotalCount);
     }
 
     public bool Update(Guid id, string name, string description)
@@ -49,6 +50,7 @@ public class ProjectService
         var folderIds = _projectRepository.GetFolderIds(id);
 
         _sessionRepository.ClearProjectId(id);
+        _writeUpRepository.ClearProjectId(id);
 
         foreach (var folderId in folderIds)
         {
@@ -58,8 +60,8 @@ public class ProjectService
         return _projectRepository.Delete(id);
     }
 
-    public ProjectFolderDto? AddFolder(Guid projectId, string name)
-        => _projectRepository.AddFolder(projectId, name);
+    public ProjectFolderDto? AddFolder(Guid projectId, string name, Guid? parentId = null)
+        => _projectRepository.AddFolder(projectId, name, parentId);
 
     public bool DeleteFolder(Guid projectId, Guid folderId)
     {
@@ -70,21 +72,29 @@ public class ProjectService
     public bool RenameFolder(Guid projectId, Guid folderId, string name)
         => _projectRepository.RenameFolder(projectId, folderId, name);
 
-    public bool AssignSession(Guid sessionId, Guid projectId)
+    public bool AssignSession(Guid sessionId, Guid projectId, Guid folderId)
     {
         var actualProjectId = projectId == Guid.Empty ? (Guid?)null : projectId;
-        return _sessionRepository.SetProjectId(sessionId, actualProjectId);
-    }
-
-    public bool MoveWriteUp(Guid writeUpId, Guid folderId)
-    {
         var actualFolderId = folderId == Guid.Empty ? (Guid?)null : folderId;
-        return _writeUpRepository.SetFolderId(writeUpId, actualFolderId);
+        return _sessionRepository.SetProjectAndFolderId(sessionId, actualProjectId, actualFolderId);
     }
 
-    public List<SessionMetadataDto> ListSessions(Guid projectId)
-        => _sessionRepository.GetByProjectId(projectId).ToList();
+    public bool MoveWriteUp(Guid writeUpId, Guid projectId, Guid folderId)
+    {
+        var actualProjectId = projectId == Guid.Empty ? (Guid?)null : projectId;
+        var actualFolderId = folderId == Guid.Empty ? (Guid?)null : folderId;
+        return _writeUpRepository.SetProjectAndFolderId(writeUpId, actualProjectId, actualFolderId);
+    }
 
-    public List<WriteUpMetadataDto> ListWriteUps(Guid folderId)
-        => _writeUpRepository.GetByFolderId(folderId);
+    public (List<SessionMetadataDto> Items, int TotalCount) ListSessions(Guid projectId, int offset = 0, int limit = 50)
+    {
+        var result = _sessionRepository.GetByProjectId(projectId, offset, limit);
+        return (result.Items.ToList(), result.TotalCount);
+    }
+
+    public (List<WriteUpMetadataDto> Items, int TotalCount) ListWriteUps(Guid folderId, int offset = 0, int limit = 50)
+    {
+        var result = _writeUpRepository.GetByFolderId(folderId, offset, limit);
+        return (result.Items.ToList(), result.TotalCount);
+    }
 }
