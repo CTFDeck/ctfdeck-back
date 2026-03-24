@@ -59,3 +59,4 @@ global.json
 .DS_Store
 .idea
 coverage/*
+.vscode/settings.json

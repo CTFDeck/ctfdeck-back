@@ -306,6 +306,35 @@ public sealed class SessionRepository : ISessionRepository
         }
     }
 
+    public void Insert(SessionDto session)
+    {
+        var model = new Session
+        {
+            Id = session.Id,
+            Name = session.Name,
+            Description = session.Description,
+            CreatedAt = session.CreatedAt,
+            UpdatedAt = session.UpdatedAt,
+            ProjectId = session.ProjectId,
+            FolderId = session.FolderId,
+            History = session.History.Select(h => new HistoryEntry
+            {
+                Id = h.Id,
+                Timestamp = h.Timestamp,
+                WorkingDirectory = h.WorkingDirectory,
+                Command = h.Command,
+                Output = h.Output,
+                ExitCode = h.ExitCode
+            }).ToList(),
+            Targets = session.Targets.Select(ToPersistence).ToList()
+        };
+
+        lock (_lock)
+        {
+            _context.Sessions.Insert(model);
+        }
+    }
+
     private static SessionDto ToDto(Session s) => new()
     {
         Id = s.Id,

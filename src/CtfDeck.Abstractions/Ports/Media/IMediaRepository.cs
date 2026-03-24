@@ -8,4 +8,5 @@ public interface IMediaRepository
     MediaDto? GetById(Guid id);
     List<MediaMetadataDto> GetAll();
     bool Delete(Guid id);
+    void Insert(MediaDto media);
 }

@@ -103,6 +103,38 @@ For more details, see [Troubleshooting Guide](TROUBLESHOOTING.md).
 
 ---
 
+## Import / Export
+
+CTFDeck supports exporting a complete project to a JSON file and re-importing it later (or on another machine).
+
+### Export a project
+
+The export request accepts a **flags bitmask** (1 byte) to control what is included:
+
+| Bit | Mask | Flag |
+|-----|------|------|
+| 0   | 0x01 | includeHistory — session history entries |
+| 1   | 0x02 | includeTargets — session targets |
+| 2   | 0x04 | includeWriteUps — write-ups |
+| 3   | 0x08 | includeMedia — media blobs (ignored if writeUps is off) |
+| 4   | 0x10 | includeScripts — all custom scripts from the instance |
+
+Default: `0x1F` (everything included). If the flags byte is absent, all content is exported.
+
+### Import a project
+
+The import processes everything present in the JSON file.
+
+**Notes:**
+- All original IDs are preserved.
+- If the project ID (or any session/write-up/media ID) already exists in the database, the import is rejected.
+- The export file must be version 1.
+- If the export contains custom scripts, they are imported as well.
+
+For the full JSON schema, see [Protocol Documentation](PROTOCOL.md#json-export-schema).
+
+---
+
 ## Protocol Documentation
 
 The backend uses a specific binary protocol for communication. For detailed information on message formats, UUID correlation, and serialization, see the [Protocol Documentation](PROTOCOL.md).

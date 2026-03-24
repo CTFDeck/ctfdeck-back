@@ -8,4 +8,5 @@ public interface ICustomScriptRepository
     List<CustomScriptDto> GetAll();
     bool Update(Guid id, string name, ScriptCategory category, string template);
     bool Delete(Guid id);
+    void Insert(CustomScriptDto script);
 }

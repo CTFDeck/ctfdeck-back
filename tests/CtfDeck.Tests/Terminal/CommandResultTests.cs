@@ -1,4 +1,4 @@
-﻿using CtfDeck.Terminal.Terminal.Core;
+using CtfDeck.Terminal.Terminal.Core;
 
 namespace CtfDeck.Tests.Terminal;
 

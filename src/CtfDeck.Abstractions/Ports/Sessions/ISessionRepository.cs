@@ -23,4 +23,5 @@ public interface ISessionRepository
     bool SetFolderId(Guid sessionId, Guid? folderId);
     bool SetProjectAndFolderId(Guid sessionId, Guid? projectId, Guid? folderId);
     void ClearProjectId(Guid projectId);
+    void Insert(SessionDto session);
 }

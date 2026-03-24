@@ -28,6 +28,12 @@ public abstract class MessageHandlerBase
             CurrentSendAsync = sendAsync;
             CurrentCancellationToken = cancellationToken;
 
+            // Extract messageId from the payload [1B type][16B msgId]
+            if (message.Length >= 17)
+            {
+                messageId = new Guid(message.Span.Slice(1, 16));
+            }
+
             var response = Dispatch(clientId, type, message.Span);
 
             if (response.Length > 0)
@@ -37,6 +43,7 @@ public abstract class MessageHandlerBase
         }
         catch (Exception ex)
         {
+            // Report error with the extracted messageId (if any)
             await sendAsync(SerializeError(messageId, ex.Message));
             return true;
         }

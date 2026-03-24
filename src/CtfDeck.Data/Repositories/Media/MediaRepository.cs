@@ -59,6 +59,23 @@ public sealed class MediaRepository : IMediaRepository
         }
     }
 
+    public void Insert(MediaDto media)
+    {
+        var model = new PersistenceMedia
+        {
+            Id = media.Id,
+            FileName = media.FileName,
+            MimeType = media.MimeType,
+            Data = media.Data,
+            CreatedAt = media.CreatedAt
+        };
+
+        lock (_lock)
+        {
+            _context.Media.Insert(model);
+        }
+    }
+
     private static MediaDto ToDto(PersistenceMedia m) => new()
     {
         Id = m.Id,

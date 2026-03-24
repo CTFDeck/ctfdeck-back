@@ -110,6 +110,42 @@ public static class ProjectProtocolSerializer
         return writer.ToArray();
     }
 
+    public static byte[] SerializeExportResult(Guid messageId, bool success)
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.ProjectExportResult, messageId, success);
+
+    public static byte[] SerializeImportResult(Guid messageId, bool success, Guid projectId)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectImportResult);
+        writer.WriteGuid(messageId);
+        writer.WriteByte((byte)(success ? 1 : 0));
+        writer.WriteGuid(projectId);
+        return writer.ToArray();
+    }
+
+    public static byte[] SerializeListExportsResult(Guid messageId, IEnumerable<ProjectExportMetadata> exports)
+    {
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectListExportsResult);
+        writer.WriteGuid(messageId);
+
+        var list = exports.ToList();
+        writer.WriteInt32(list.Count);
+
+        foreach (var export in list)
+        {
+            writer.WriteString(export.Filename);
+            writer.WriteInt64(export.SizeBytes);
+            writer.WriteInt32(export.SessionCount);
+            writer.WriteInt32(export.WriteUpCount);
+            writer.WriteInt64(((DateTimeOffset)export.ExportedAt).ToUnixTimeMilliseconds());
+            writer.WriteGuid(export.ProjectId);
+            writer.WriteByte((byte)(export.IsAlreadyImported ? 1 : 0));
+        }
+
+        return writer.ToArray();
+    }
+
     public static byte[] SerializeError(Guid messageId, string error)
         => BinaryProtocolSerializer.SerializeError(MessageType.ProjectOperationError, messageId, error);
 

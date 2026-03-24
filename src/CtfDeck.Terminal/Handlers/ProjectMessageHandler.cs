@@ -35,6 +35,9 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
             MessageType.WriteUpMove => HandleWriteUpMove(data),
             MessageType.ProjectListSessions => HandleListSessions(data),
             MessageType.ProjectListWriteUps => HandleListWriteUps(data),
+            MessageType.ProjectExport => HandleExport(data),
+            MessageType.ProjectImport => HandleImport(data),
+            MessageType.ProjectListExports => HandleListExports(data),
             _ => throw new InvalidOperationException($"Unknown project message type: {type}")
         };
     }
@@ -122,5 +125,26 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
         var request = new ProjectListWriteUpsRequest(data);
         var result = _projectService.ListWriteUps(request.FolderId, request.Offset, request.Limit);
         return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, result.Items, result.TotalCount);
+    }
+
+    private byte[] HandleExport(ReadOnlySpan<byte> data)
+    {
+        var request = new ProjectExportRequest(data);
+        _projectService.ExportToFile(request.ProjectId, request.Path, request.Options);
+        return ProjectProtocolSerializer.SerializeExportResult(request.MessageId, true);
+    }
+
+    private byte[] HandleImport(ReadOnlySpan<byte> data)
+    {
+        var request = new ProjectImportRequest(data);
+        var projectId = _projectService.ImportFromFile(request.Path);
+        return ProjectProtocolSerializer.SerializeImportResult(request.MessageId, true, projectId);
+    }
+
+    private byte[] HandleListExports(ReadOnlySpan<byte> data)
+    {
+        var request = new ProjectListExportsRequest(data);
+        var exports = _projectService.GetAvailableExports();
+        return ProjectProtocolSerializer.SerializeListExportsResult(request.MessageId, exports);
     }
 }
