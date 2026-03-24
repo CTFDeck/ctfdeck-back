@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using CtfDeck.WsServer.WebSocket;
 using FluentAssertions;
 
@@ -6,6 +7,15 @@ namespace CtfDeck.Tests.WebSocket;
 
 public class WebSocketServerTests
 {
+    private static int GetFreePort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
+
     [Fact]
     public void Constructor_ShouldInitializeCorrectly()
     {
@@ -52,7 +62,7 @@ public class WebSocketServerTests
     public async Task StartAsync_ShouldStartSuccessfully()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8081, useInMemoryDb: true); // Use different port to avoid conflicts
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
 
         try
         {
@@ -80,7 +90,7 @@ public class WebSocketServerTests
     public async Task StopAsync_ShouldStopCleanly()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8082, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
         await server.StartAsync();
 
         // Act
@@ -94,7 +104,7 @@ public class WebSocketServerTests
     public async Task StopAsync_WhenNotRunning_ShouldReturn()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8083, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
 
         // Act & Assert - Should not throw
         await server.StopAsync();
@@ -105,7 +115,7 @@ public class WebSocketServerTests
     public async Task StartAsync_WhenAlreadyRunning_ShouldReturn()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8084, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
         await server.StartAsync();
 
         try
@@ -127,7 +137,7 @@ public class WebSocketServerTests
     public async Task StartStopCycle_ShouldMaintainCorrectState()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8085, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
 
         // Act & Assert
         server.IsRunning.Should().BeFalse();
@@ -149,7 +159,7 @@ public class WebSocketServerTests
     public async Task MultipleStops_WhenNotRunning_ShouldNotThrow()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8086, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
 
         // Act & Assert
         await server.StopAsync();
@@ -163,7 +173,7 @@ public class WebSocketServerTests
     public async Task StartStopWithDifferentPorts_ShouldWorkCorrectly()
     {
         // Arrange
-        var ports = new[] { 8087, 8088, 8089 };
+        var ports = new[] { GetFreePort(), GetFreePort(), GetFreePort() };
 
         foreach (var port in ports)
         {
@@ -193,7 +203,7 @@ public class WebSocketServerTests
     public async Task ServerProperties_AfterStartStop_ShouldMaintainConsistency()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8090, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
 
         try
         {
@@ -286,7 +296,7 @@ public class WebSocketServerTests
     public async Task ConnectedClientCount_ShouldReturnCorrectCount()
     {
         // Arrange
-        var server = new WebSocketServer("localhost", 8093, useInMemoryDb: true);
+        var server = new WebSocketServer("localhost", GetFreePort(), useInMemoryDb: true);
         await server.StartAsync();
 
         try

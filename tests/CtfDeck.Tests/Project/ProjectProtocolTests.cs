@@ -193,8 +193,8 @@ public class ProjectProtocolTests
         writer.WriteByte((byte)MessageType.ProjectAssignSession);
         writer.WriteGuid(messageId);
         writer.WriteGuid(projectId);
-        writer.WriteGuid(sessionId);
         writer.WriteGuid(folderId);
+        writer.WriteGuid(sessionId);
         var data = writer.ToArray();
 
         var request = new ProjectAssignSessionRequest(data);
@@ -247,7 +247,7 @@ public class ProjectProtocolTests
         var request = new WriteUpMoveRequest(data);
 
         request.ProjectId.Should().Be(projectId);
-        request.FolderId.Should().Be(Guid.Empty);
+        request.FolderId.Should().BeNull();
     }
 
     [Fact]

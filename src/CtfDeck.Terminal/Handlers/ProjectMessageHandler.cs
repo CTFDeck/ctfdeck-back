@@ -38,9 +38,6 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
             MessageType.ProjectExport => HandleExport(data),
             MessageType.ProjectImport => HandleImport(data),
             MessageType.ProjectListExports => HandleListExports(data),
-            MessageType.ProjectExport => HandleExport(data),
-            MessageType.ProjectImport => HandleImport(data),
-            MessageType.ProjectListExports => HandleListExports(data),
             _ => throw new InvalidOperationException($"Unknown project message type: {type}")
         };
     }
@@ -64,8 +61,6 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
         var request = new ProjectListRequest(data);
         var result = _projectService.GetAllMetadata(request.Offset, request.Limit);
         return ProjectProtocolSerializer.SerializeListResult(request.MessageId, result.Items, result.TotalCount);
-        var result = _projectService.GetAllMetadata(request.Offset, request.Limit);
-        return ProjectProtocolSerializer.SerializeListResult(request.MessageId, result.Items, result.TotalCount);
     }
 
     private byte[] HandleUpdate(ReadOnlySpan<byte> data)
@@ -85,7 +80,6 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleAddFolder(ReadOnlySpan<byte> data)
     {
         var request = new ProjectAddFolderRequest(data);
-        var folder = _projectService.AddFolder(request.ProjectId, request.Name, request.ParentId);
         var folder = _projectService.AddFolder(request.ProjectId, request.Name, request.ParentId);
         return ProjectProtocolSerializer.SerializeAddFolderResult(
             request.MessageId, folder != null, folder?.Id ?? Guid.Empty);
@@ -122,8 +116,6 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleListSessions(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListSessionsRequest(data);
-        var result = _projectService.ListSessions(request.ProjectId, request.Offset, request.Limit);
-        return ProjectProtocolSerializer.SerializeListSessionsResult(request.MessageId, result.Items, result.TotalCount);
         var result = _projectService.ListSessions(request.ProjectId, request.Offset, request.Limit);
         return ProjectProtocolSerializer.SerializeListSessionsResult(request.MessageId, result.Items, result.TotalCount);
     }

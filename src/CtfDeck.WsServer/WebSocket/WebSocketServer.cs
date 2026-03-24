@@ -100,7 +100,6 @@ public class WebSocketServer : IServerHost
         var writeUpService = new WriteUpService(writeUpRepository);
         var mediaService = new MediaService(mediaRepository);
         var projectService = new ProjectService(projectRepository, sessionRepository, writeUpRepository, mediaRepository, customScriptRepository);
-        var projectService = new ProjectService(projectRepository, sessionRepository, writeUpRepository, mediaRepository, customScriptRepository);
 
         _messageHandlers =
         [
