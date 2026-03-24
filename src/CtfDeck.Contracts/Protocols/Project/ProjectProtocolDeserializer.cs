@@ -36,6 +36,8 @@ public readonly ref struct ProjectListRequest
     public readonly Guid MessageId;
     public readonly int Offset;
     public readonly int Limit;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public ProjectListRequest(ReadOnlySpan<byte> data)
     {
@@ -168,6 +170,8 @@ public readonly ref struct ProjectListSessionsRequest
     public readonly Guid ProjectId;
     public readonly int Offset;
     public readonly int Limit;
+    public readonly int Offset;
+    public readonly int Limit;
 
     public ProjectListSessionsRequest(ReadOnlySpan<byte> data)
     {
@@ -246,6 +250,8 @@ public static class ProjectProtocolDeserializer
     {
         return (type >= MessageType.ProjectCreate && type <= MessageType.ProjectAssignSession)
             || type == MessageType.WriteUpMove
+            || (type >= MessageType.ProjectListSessions && type <= MessageType.ProjectListWriteUps)
+            || (type >= MessageType.ProjectExport && type <= MessageType.ProjectListExports);
             || (type >= MessageType.ProjectListSessions && type <= MessageType.ProjectListWriteUps)
             || (type >= MessageType.ProjectExport && type <= MessageType.ProjectListExports);
     }

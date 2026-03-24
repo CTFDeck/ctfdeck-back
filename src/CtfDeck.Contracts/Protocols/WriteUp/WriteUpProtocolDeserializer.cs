@@ -7,6 +7,7 @@ public readonly ref struct WriteUpCreateRequest
 {
     public readonly Guid MessageId;
     public readonly Guid? SessionId;
+    public readonly Guid? SessionId;
     public readonly string Name;
 
     public WriteUpCreateRequest(ReadOnlySpan<byte> data)
@@ -53,6 +54,9 @@ public readonly ref struct WriteUpListRequest
 {
     public readonly Guid MessageId;
     public readonly Guid SessionId;
+    public readonly int Offset;
+    public readonly int Limit;
+    public readonly bool UnassignedOnly;
     public readonly int Offset;
     public readonly int Limit;
     public readonly bool UnassignedOnly;

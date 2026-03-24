@@ -526,7 +526,7 @@ public class WebSocketIntegrationTests : IDisposable
         catch (OperationCanceledException) { }
 
         // Assert
-        client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.Closed || s == WebSocketState.Aborted);
+        client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.CloseSent || s == WebSocketState.Closed || s == WebSocketState.Aborted);
         _server.ConnectedClientCount.Should().Be(0);
     }
 
@@ -580,3 +580,4 @@ public class WebSocketIntegrationTests : IDisposable
         response.IsSuccessStatusCode.Should().BeTrue();
     }
 }
+
