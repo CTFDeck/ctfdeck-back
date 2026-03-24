@@ -56,7 +56,12 @@ public sealed class ServerHostRunner : IDisposable
                     await _delayAsync(_loopDelay, _shutdownTokenSource.Token);
                 }
             }
-            catch (TaskCanceledException)
+            catch (TaskCanceledException) when (_shutdownTokenSource.Token.IsCancellationRequested)
+            {
+                // Expected when shutdown is requested while waiting in delay.
+            }
+
+            if (_shutdownTokenSource.Token.IsCancellationRequested)
             {
                 _log("Server shutdown initiated...");
             }
