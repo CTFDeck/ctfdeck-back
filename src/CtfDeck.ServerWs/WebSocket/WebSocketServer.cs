@@ -169,34 +169,66 @@ public class WebSocketServer
             await Task.WhenAny(_listenerTask, Task.Delay(2000));
         }
 
-        foreach (var ctx in _clients.Values)
+        // Drain clients defensively: new clients can still be registered briefly while
+        // connection handler tasks are winding down.
+        var shutdownDeadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < shutdownDeadline)
         {
-            try
+            var hadClient = false;
+
+            foreach (var (clientId, ctx) in _clients.ToArray())
             {
-                if (ctx.WebSocket.State == WebSocketState.Open)
-                    await ctx.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None);
-            }
-            catch (WebSocketException) { /* ignore */ }
-            catch (ObjectDisposedException) { /* ignore */ }
-            catch (OperationCanceledException) { /* ignore */ }
-            finally
-            {
+                hadClient = true;
+
                 try
                 {
-                    if (ctx.WebSocket.State != WebSocketState.Closed && ctx.WebSocket.State != WebSocketState.Aborted)
+                    if (ctx.WebSocket.State == WebSocketState.Open)
                     {
-                        ctx.WebSocket.Abort();
+                        await ctx.WebSocket.CloseAsync(
+                            WebSocketCloseStatus.NormalClosure,
+                            "Server shutting down",
+                            CancellationToken.None);
                     }
                 }
-                catch (ObjectDisposedException) { /* ignore */ }
                 catch (WebSocketException) { /* ignore */ }
+                catch (ObjectDisposedException) { /* ignore */ }
+                catch (OperationCanceledException) { /* ignore */ }
+                finally
+                {
+                    try
+                    {
+                        if (ctx.WebSocket.State != WebSocketState.Closed &&
+                            ctx.WebSocket.State != WebSocketState.Aborted)
+                        {
+                            ctx.WebSocket.Abort();
+                        }
+                    }
+                    catch (ObjectDisposedException) { /* ignore */ }
+                    catch (WebSocketException) { /* ignore */ }
+
+                    if (_clients.TryRemove(clientId, out var removed))
+                    {
+                        removed.Dispose();
+                    }
+                }
+            }
+
+            if (!hadClient || _clients.IsEmpty)
+            {
+                break;
+            }
+
+            await Task.Delay(25);
+        }
+
+        foreach (var (clientId, ctx) in _clients.ToArray())
+        {
+            if (_clients.TryRemove(clientId, out var removed))
+            {
+                removed.Dispose();
             }
         }
 
-        foreach (var ctx in _clients.Values)
-            ctx.Dispose();
-
-        _clients.Clear();
         _dbContext.Dispose();
 
         Console.WriteLine("WebSocket server stopped successfully.");
