@@ -60,6 +60,3 @@ global.json
 .idea
 coverage/*
 .vscode/settings.json
-
-#go script for annotations
-tools/*
