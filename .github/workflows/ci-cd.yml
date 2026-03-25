@@ -82,7 +82,7 @@ jobs:
 
       - name: Publish Linux (single file)
         run: |
-          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
+          dotnet publish ./src/CtfDeck.WsServer/CtfDeck.WsServer.csproj \
             -c Release -r linux-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -94,7 +94,7 @@ jobs:
 
       - name: Publish Windows (single file)
         run: |
-          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
+          dotnet publish ./src/CtfDeck.WsServer/CtfDeck.WsServer.csproj \
             -c Release -r win-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -106,7 +106,7 @@ jobs:
 
       - name: Publish macOS Intel (single file)
         run: |
-          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
+          dotnet publish ./src/CtfDeck.WsServer/CtfDeck.WsServer.csproj \
             -c Release -r osx-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -118,7 +118,7 @@ jobs:
 
       - name: Publish macOS ARM (single file)
         run: |
-          dotnet publish ./src/CtfDeck.ServerWs/CtfDeck.ServerWs.csproj \
+          dotnet publish ./src/CtfDeck.WsServer/CtfDeck.WsServer.csproj \
             -c Release -r osx-arm64 \
             --self-contained true \
             -p:PublishSingleFile=true \

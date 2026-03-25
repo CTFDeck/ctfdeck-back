@@ -3,7 +3,7 @@ using System.Threading.Channels;
 using System.Text;
 using CtfDeck.Contracts.Transport;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.WsServer.WebSocket;
 
 /// <summary>
 /// High-performance output batcher that coalesces rapid outputs into fewer WebSocket sends.
@@ -142,7 +142,7 @@ public sealed class OutputBatcher : IAsyncDisposable
         if (batch.Length == 0) return;
 
         var messageType = isError ? MessageType.StreamError : MessageType.StreamOutput;
-        var data = BinaryProtocolSerializer.SerializeStreamChunk(messageType, _messageId, batch.ToString());
+        var data = TerminalProtocolSerializer.SerializeStreamChunk(messageType, _messageId, batch.ToString());
         await _sender.SendAsync(data, ct);
     }
 
@@ -154,7 +154,7 @@ public sealed class OutputBatcher : IAsyncDisposable
         _channel.Writer.Complete();
         await _processingTask;
 
-        var data = BinaryProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
+        var data = TerminalProtocolSerializer.SerializeStreamEnd(_messageId, exitCode, workingDirectory);
         await _sender.SendAsync(data);
 
         lock (_outputLock)

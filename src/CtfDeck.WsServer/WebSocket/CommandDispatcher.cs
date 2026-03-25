@@ -1,22 +1,25 @@
 using CtfDeck.Contracts.Transport;
 using CtfDeck.Terminal.Features.Sessions;
 
-namespace CtfDeck.ServerWs.WebSocket;
+namespace CtfDeck.WsServer.WebSocket;
 
 public sealed class CommandDispatcher
 {
     private readonly ActiveSessionManager _activeSessionManager;
     private readonly CancellationToken _serverShutdownToken;
     private readonly Func<string, string> _aliasResolver;
+    private readonly TimeSpan _sudoPasswordTimeout;
 
     public CommandDispatcher(
         ActiveSessionManager activeSessionManager,
         CancellationToken serverShutdownToken,
-        Func<string, string>? aliasResolver = null)
+        Func<string, string>? aliasResolver = null,
+        TimeSpan? sudoPasswordTimeout = null)
     {
         _activeSessionManager = activeSessionManager;
         _serverShutdownToken = serverShutdownToken;
         _aliasResolver = aliasResolver ?? (cmd => cmd);
+        _sudoPasswordTimeout = sudoPasswordTimeout ?? TimeSpan.FromSeconds(30);
     }
 
     /// <summary>
@@ -92,7 +95,7 @@ public sealed class CommandDispatcher
             // Command was killed or sudo password cancelled — send StreamEnd with exitCode -1
             try
             {
-                var endData = BinaryProtocolSerializer.SerializeStreamEnd(command.MessageId, -1, executor.CurrentDirectory);
+                var endData = TerminalProtocolSerializer.SerializeStreamEnd(command.MessageId, -1, executor.CurrentDirectory);
                 await ctx.Sender.SendAsync(endData);
             }
             catch (Exception ex)
@@ -135,7 +138,7 @@ public sealed class CommandDispatcher
 
         Console.WriteLine($"[KILL] {commandId} → {(success ? "cancelled" : "not found")}");
 
-        var killResult = BinaryProtocolSerializer.SerializeCommandKillResult(commandId, success);
+        var killResult = TerminalProtocolSerializer.SerializeCommandKillResult(commandId, success);
         await ctx.Sender.SendAsync(killResult);
     }
 
@@ -147,10 +150,10 @@ public sealed class CommandDispatcher
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         ctx.SudoWaiters[messageId] = tcs;
 
-        var req = BinaryProtocolSerializer.SerializePasswordRequest(messageId, "Sudo password required");
+        var req = TerminalProtocolSerializer.SerializePasswordRequest(messageId, "Sudo password required");
         await ctx.Sender.SendAsync(req);
 
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeoutCts = new CancellationTokenSource(_sudoPasswordTimeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try

@@ -11,15 +11,11 @@ public readonly ref struct WriteUpCreateRequest
 
     public WriteUpCreateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][4B nameLen][name]
-        MessageId = new Guid(data.Slice(1, 16));
-        var sid = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        var sid = reader.ReadGuid();
         SessionId = sid == Guid.Empty ? null : sid;
-
-        var offset = 33;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
+        Name = reader.ReadString();
     }
 }
 
@@ -32,19 +28,11 @@ public readonly ref struct WriteUpUpdateRequest
 
     public WriteUpUpdateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B writeUpId][4B nameLen][name][4B contentLen][content]
-        MessageId = new Guid(data.Slice(1, 16));
-        WriteUpId = new Guid(data.Slice(17, 16));
-
-        var offset = 33;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var contentLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Content = Encoding.UTF8.GetString(data.Slice(offset, contentLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        WriteUpId = reader.ReadGuid();
+        Name = reader.ReadString();
+        Content = reader.ReadString();
     }
 }
 
@@ -55,9 +43,9 @@ public readonly ref struct WriteUpDeleteRequest
 
     public WriteUpDeleteRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B writeUpId]
-        MessageId = new Guid(data.Slice(1, 16));
-        WriteUpId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        WriteUpId = reader.ReadGuid();
     }
 }
 
@@ -71,12 +59,12 @@ public readonly ref struct WriteUpListRequest
 
     public WriteUpListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B sessionId][4B offset][4B limit][1B unassignedOnly]
-        MessageId = new Guid(data.Slice(1, 16));
-        SessionId = new Guid(data.Slice(17, 16));
-        Offset = BitConverter.ToInt32(data.Slice(33, 4));
-        Limit = BitConverter.ToInt32(data.Slice(37, 4));
-        UnassignedOnly = data.Length > 41 && data[41] == 1;
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        SessionId = reader.ReadGuid();
+        Offset = reader.ReadInt32();
+        Limit = reader.ReadInt32();
+        UnassignedOnly = reader.Remaining && reader.ReadByte() == 1;
     }
 }
 
@@ -87,9 +75,9 @@ public readonly ref struct WriteUpLoadRequest
 
     public WriteUpLoadRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B writeUpId]
-        MessageId = new Guid(data.Slice(1, 16));
-        WriteUpId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        WriteUpId = reader.ReadGuid();
     }
 }
 

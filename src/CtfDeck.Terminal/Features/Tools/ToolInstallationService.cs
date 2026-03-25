@@ -24,10 +24,10 @@ public class ToolInstallationService : IToolInstaller
         Func<ToolInstallProgressDto, Task> progressCallback,
         CancellationToken cancellationToken = default)
     {
-        var installer = ResolveInstaller(tool);
-
         try
         {
+            var installer = ResolveInstaller(tool);
+
             await progressCallback(new ToolInstallProgressDto
             {
                 ToolId = tool.Id,

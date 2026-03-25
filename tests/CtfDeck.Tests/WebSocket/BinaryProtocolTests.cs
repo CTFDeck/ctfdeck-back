@@ -11,6 +11,7 @@ public class BinaryProtocolTests
         var bytes = Encoding.UTF8.GetBytes(commandText);
         return new WebSocketCommand
         {
+            Command = commandText,
             CommandLength = bytes.Length,
             CommandBytes = bytes,
             MessageId = messageId
@@ -162,7 +163,7 @@ public class BinaryProtocolTests
         binaryData.Should().NotBeNull();
         binaryData.Length.Should().BeGreaterThan(0);
 
-        // Verify structure: [1 byte type] + [4 bytes exitCode] + [4 bytes outputLength] + [output bytes] + 
+        // Verify structure: [1 byte type] + [4 bytes exitCode] + [4 bytes outputLength] + [output bytes] +
         //                  [4 bytes errorLength] + [error bytes] + [4 bytes wdLength] + [wd bytes] + [16 bytes UUID]
         var expectedLength = 1 + 4 + 4 + output.Length + 4 + error.Length + 4 + workingDirectory.Length + 16;
         binaryData.Length.Should().Be(expectedLength);

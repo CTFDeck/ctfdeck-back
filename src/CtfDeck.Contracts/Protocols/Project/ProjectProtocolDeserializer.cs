@@ -1,4 +1,3 @@
-using System.Text;
 using CtfDeck.Contracts.Models.Projects;
 using CtfDeck.Contracts.Transport;
 
@@ -12,18 +11,10 @@ public readonly ref struct ProjectCreateRequest
 
     public ProjectCreateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B nameLen][name][4B descLen][desc]
-        MessageId = new Guid(data.Slice(1, 16));
-
-        var offset = 17;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Name = reader.ReadString();
+        Description = reader.ReadString();
     }
 }
 
@@ -34,9 +25,9 @@ public readonly ref struct ProjectLoadRequest
 
     public ProjectLoadRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
     }
 }
 
@@ -48,35 +39,27 @@ public readonly ref struct ProjectListRequest
 
     public ProjectListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B offset][4B limit]
-        MessageId = new Guid(data.Slice(1, 16));
-        Offset = BitConverter.ToInt32(data.Slice(17, 4));
-        Limit = BitConverter.ToInt32(data.Slice(21, 4));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Offset = reader.ReadInt32();
+        Limit = reader.ReadInt32();
     }
 }
 
-public class ProjectUpdateRequest
+public readonly ref struct ProjectUpdateRequest
 {
-    public Guid MessageId { get; }
-    public Guid ProjectId { get; }
-    public string Name { get; }
-    public string Description { get; }
+    public readonly Guid MessageId;
+    public readonly Guid ProjectId;
+    public readonly string Name;
+    public readonly string Description;
 
     public ProjectUpdateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][4B nameLen][name][4B descLen][desc]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-
-        var offset = 33;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        var descLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Description = Encoding.UTF8.GetString(data.Slice(offset, descLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        Name = reader.ReadString();
+        Description = reader.ReadString();
     }
 }
 
@@ -87,32 +70,27 @@ public readonly ref struct ProjectDeleteRequest
 
     public ProjectDeleteRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
     }
 }
 
-public class ProjectAddFolderRequest
+public readonly ref struct ProjectAddFolderRequest
 {
-    public Guid MessageId { get; }
-    public Guid ProjectId { get; }
-    public Guid? ParentId { get; }
-    public string Name { get; }
+    public readonly Guid MessageId;
+    public readonly Guid ProjectId;
+    public readonly Guid? ParentId;
+    public readonly string Name;
 
     public ProjectAddFolderRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][16B parentId][4B nameLen][name]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-
-        var parentIdRaw = new Guid(data.Slice(33, 16));
-        ParentId = parentIdRaw == Guid.Empty ? null : parentIdRaw;
-
-        var offset = 49;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        var parentId = reader.ReadGuid();
+        ParentId = parentId == Guid.Empty ? null : parentId;
+        Name = reader.ReadString();
     }
 }
 
@@ -124,48 +102,27 @@ public readonly ref struct ProjectDeleteFolderRequest
 
     public ProjectDeleteFolderRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][16B folderId]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-        FolderId = new Guid(data.Slice(33, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        FolderId = reader.ReadGuid();
     }
 }
 
-public class ProjectRenameFolderRequest
-{
-    public Guid MessageId { get; }
-    public Guid ProjectId { get; }
-    public Guid FolderId { get; }
-    public string Name { get; }
-
-    public ProjectRenameFolderRequest(ReadOnlySpan<byte> data)
-    {
-        // Format: [1B type][16B msgId][16B projectId][16B folderId][4B nameLen][name]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-        FolderId = new Guid(data.Slice(33, 16));
-
-        var offset = 49;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-    }
-}
-
-public readonly ref struct ProjectAssignSessionRequest
+public readonly ref struct ProjectRenameFolderRequest
 {
     public readonly Guid MessageId;
     public readonly Guid ProjectId;
-    public readonly Guid SessionId;
     public readonly Guid FolderId;
+    public readonly string Name;
 
-    public ProjectAssignSessionRequest(ReadOnlySpan<byte> data)
+    public ProjectRenameFolderRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][16B sessionId][16B folderId]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-        SessionId = new Guid(data.Slice(33, 16));
-        FolderId = new Guid(data.Slice(49, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        FolderId = reader.ReadGuid();
+        Name = reader.ReadString();
     }
 }
 
@@ -174,15 +131,34 @@ public readonly ref struct WriteUpMoveRequest
     public readonly Guid MessageId;
     public readonly Guid WriteUpId;
     public readonly Guid ProjectId;
-    public readonly Guid FolderId;
+    public readonly Guid? FolderId;
 
     public WriteUpMoveRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B writeUpId][16B projectId][16B folderId]
-        MessageId = new Guid(data.Slice(1, 16));
-        WriteUpId = new Guid(data.Slice(17, 16));
-        ProjectId = new Guid(data.Slice(33, 16));
-        FolderId = new Guid(data.Slice(49, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        WriteUpId = reader.ReadGuid();
+        ProjectId = reader.ReadGuid();
+        var fid = reader.ReadGuid();
+        FolderId = fid == Guid.Empty ? null : fid;
+    }
+}
+
+public readonly ref struct ProjectAssignSessionRequest
+{
+    public readonly Guid MessageId;
+    public readonly Guid ProjectId;
+    public readonly Guid? FolderId;
+    public readonly Guid SessionId;
+
+    public ProjectAssignSessionRequest(ReadOnlySpan<byte> data)
+    {
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        var folderId = reader.ReadGuid();
+        FolderId = folderId == Guid.Empty ? null : folderId;
+        SessionId = reader.ReadGuid();
     }
 }
 
@@ -195,70 +171,61 @@ public readonly ref struct ProjectListSessionsRequest
 
     public ProjectListSessionsRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][4B offset][4B limit]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-        Offset = BitConverter.ToInt32(data.Slice(33, 4));
-        Limit = BitConverter.ToInt32(data.Slice(37, 4));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        Offset = reader.ReadInt32();
+        Limit = reader.ReadInt32();
     }
 }
 
 public readonly ref struct ProjectListWriteUpsRequest
 {
     public readonly Guid MessageId;
-    public readonly Guid FolderId;
+    public readonly Guid ProjectId;
+    public readonly Guid? FolderId;
     public readonly int Offset;
     public readonly int Limit;
 
     public ProjectListWriteUpsRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B folderId][4B offset][4B limit]
-        MessageId = new Guid(data.Slice(1, 16));
-        FolderId = new Guid(data.Slice(17, 16));
-        Offset = BitConverter.ToInt32(data.Slice(33, 4));
-        Limit = BitConverter.ToInt32(data.Slice(37, 4));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        var fid = reader.ReadGuid();
+        FolderId = fid == Guid.Empty ? null : fid;
+        Offset = reader.ReadInt32();
+        Limit = reader.ReadInt32();
     }
 }
 
-public class ProjectExportRequest
+public readonly ref struct ProjectExportRequest
 {
-    public Guid MessageId { get; }
-    public Guid ProjectId { get; }
-    public string Path { get; }
-    public ExportOptions Options { get; }
+    public readonly Guid MessageId;
+    public readonly Guid ProjectId;
+    public readonly string Path;
+    public readonly ExportOptions Options;
 
     public ProjectExportRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B projectId][4B pathLen][path][1B flags?]
-        MessageId = new Guid(data.Slice(1, 16));
-        ProjectId = new Guid(data.Slice(17, 16));
-
-        var offset = 33;
-        var pathLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Path = Encoding.UTF8.GetString(data.Slice(offset, pathLen));
-        offset += pathLen;
-
-        Options = offset < data.Length
-            ? ExportOptions.FromFlags(data[offset])
-            : ExportOptions.All;
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ProjectId = reader.ReadGuid();
+        Path = reader.ReadString();
+        Options = reader.Remaining ? ExportOptions.FromFlags(reader.ReadByte()) : ExportOptions.All;
     }
 }
 
-public class ProjectImportRequest
+public readonly ref struct ProjectImportRequest
 {
-    public Guid MessageId { get; }
-    public string Path { get; }
+    public readonly Guid MessageId;
+    public readonly string Path;
 
     public ProjectImportRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B pathLen][path]
-        MessageId = new Guid(data.Slice(1, 16));
-
-        var offset = 17;
-        var pathLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Path = Encoding.UTF8.GetString(data.Slice(offset, pathLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Path = reader.ReadString();
     }
 }
 
@@ -268,8 +235,8 @@ public readonly ref struct ProjectListExportsRequest
 
     public ProjectListExportsRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId]
-        MessageId = new Guid(data.Slice(1, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
     }
 }
 

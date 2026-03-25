@@ -13,21 +13,11 @@ public readonly ref struct CustomScriptCreateRequest
 
     public CustomScriptCreateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B nameLen][name][4B category][4B templateLen][template]
-        MessageId = new Guid(data.Slice(1, 16));
-
-        var offset = 17;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        Category = (ScriptCategory)BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-
-        var templateLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Template = Encoding.UTF8.GetString(data.Slice(offset, templateLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Name = reader.ReadString();
+        Category = (ScriptCategory)reader.ReadInt32();
+        Template = reader.ReadString();
     }
 }
 
@@ -41,22 +31,12 @@ public readonly ref struct CustomScriptUpdateRequest
 
     public CustomScriptUpdateRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B scriptId][4B nameLen][name][4B category][4B templateLen][template]
-        MessageId = new Guid(data.Slice(1, 16));
-        ScriptId = new Guid(data.Slice(17, 16));
-
-        var offset = 33;
-        var nameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Name = Encoding.UTF8.GetString(data.Slice(offset, nameLen));
-        offset += nameLen;
-
-        Category = (ScriptCategory)BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-
-        var templateLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Template = Encoding.UTF8.GetString(data.Slice(offset, templateLen));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ScriptId = reader.ReadGuid();
+        Name = reader.ReadString();
+        Category = (ScriptCategory)reader.ReadInt32();
+        Template = reader.ReadString();
     }
 }
 
@@ -67,9 +47,9 @@ public readonly ref struct CustomScriptDeleteRequest
 
     public CustomScriptDeleteRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B scriptId]
-        MessageId = new Guid(data.Slice(1, 16));
-        ScriptId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ScriptId = reader.ReadGuid();
     }
 }
 
@@ -79,8 +59,8 @@ public readonly ref struct CustomScriptListRequest
 
     public CustomScriptListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId]
-        MessageId = new Guid(data.Slice(1, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
     }
 }
 

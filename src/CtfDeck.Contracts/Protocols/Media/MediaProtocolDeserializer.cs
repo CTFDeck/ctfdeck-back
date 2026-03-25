@@ -12,23 +12,12 @@ public readonly ref struct MediaUploadRequest
 
     public MediaUploadRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][4B fileNameLen][fileName][4B mimeTypeLen][mimeType][4B dataLen][data]
-        MessageId = new Guid(data.Slice(1, 16));
-
-        var offset = 17;
-        var fileNameLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        FileName = Encoding.UTF8.GetString(data.Slice(offset, fileNameLen));
-        offset += fileNameLen;
-
-        var mimeTypeLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        MimeType = Encoding.UTF8.GetString(data.Slice(offset, mimeTypeLen));
-        offset += mimeTypeLen;
-
-        var dataLen = BitConverter.ToInt32(data.Slice(offset, 4));
-        offset += 4;
-        Data = data.Slice(offset, dataLen);
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        FileName = reader.ReadString();
+        MimeType = reader.ReadString();
+        var dataLen = reader.ReadInt32();
+        Data = reader.ReadBytes(dataLen);
     }
 }
 
@@ -39,9 +28,9 @@ public readonly ref struct MediaLoadRequest
 
     public MediaLoadRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B mediaId]
-        MessageId = new Guid(data.Slice(1, 16));
-        MediaId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        MediaId = reader.ReadGuid();
     }
 }
 
@@ -52,9 +41,9 @@ public readonly ref struct MediaDeleteRequest
 
     public MediaDeleteRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId][16B mediaId]
-        MessageId = new Guid(data.Slice(1, 16));
-        MediaId = new Guid(data.Slice(17, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        MediaId = reader.ReadGuid();
     }
 }
 
@@ -64,8 +53,8 @@ public readonly ref struct MediaListRequest
 
     public MediaListRequest(ReadOnlySpan<byte> data)
     {
-        // Format: [1B type][16B msgId]
-        MessageId = new Guid(data.Slice(1, 16));
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
     }
 }
 

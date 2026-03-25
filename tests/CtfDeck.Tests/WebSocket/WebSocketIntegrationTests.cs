@@ -1,6 +1,6 @@
 using System.Net.WebSockets;
 using System.Text;
-using CtfDeck.ServerWs.WebSocket;
+using CtfDeck.WsServer.WebSocket;
 using CtfDeck.Contracts.Transport;
 using FluentAssertions;
 
@@ -21,12 +21,16 @@ public class WebSocketIntegrationTests : IDisposable
     {
         try
         {
-            _server.StopAsync().GetAwaiter().GetResult();
-            _cancellationTokenSource.Dispose();
+            var stopTask = _server.StopAsync();
+            _ = Task.WhenAny(stopTask, Task.Delay(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
         }
         catch
         {
             // Ignore cleanup errors in tests
+        }
+        finally
+        {
+            _cancellationTokenSource.Dispose();
         }
     }
 
@@ -54,50 +58,97 @@ public class WebSocketIntegrationTests : IDisposable
         return (ms.ToArray(), result.MessageType);
     }
 
-    private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct)
+    private async Task<WebSocketResponse> ReceiveCompleteResponseAsync(ClientWebSocket client, CancellationToken ct, int timeoutMs = 10000)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeoutMs);
+        var token = cts.Token;
+
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
 
         var messageId = Guid.Empty;
 
-        while (true)
+        try
         {
-            var (data, msgType) = await ReceiveFullMessageBytesAsync(client, ct);
-            if (msgType == WebSocketMessageType.Close) break;
+            while (true)
+            {
+                var (data, msgType) = await ReceiveFullMessageBytesAsync(client, token);
+                if (msgType == WebSocketMessageType.Close) break;
 
-            var type = (MessageType)data[0];
+                var type = (MessageType)data[0];
 
-            if (type == MessageType.CompleteResponse)
-            {
-                return WebSocketResponse.Deserialize(data);
-            }
-            else if (type == MessageType.StreamOutput)
-            {
-                var chunk = StreamChunkMessage.Deserialize(data);
-                stdout.Append(chunk.Data);
-                messageId = chunk.MessageId;
-            }
-            else if (type == MessageType.StreamError)
-            {
-                var chunk = StreamChunkMessage.Deserialize(data);
-                stderr.Append(chunk.Data);
-                messageId = chunk.MessageId;
-            }
-            else if (type == MessageType.StreamEnd)
-            {
-                var endMsg = StreamEndMessage.Deserialize(data);
-                return WebSocketResponse.FromResult(
-                    endMsg.ExitCode,
-                    stdout.ToString(),
-                    stderr.ToString(),
-                    endMsg.WorkingDirectory,
-                    endMsg.MessageId
-                );
+                if (type == MessageType.CompleteResponse)
+                {
+                    return WebSocketResponse.Deserialize(data);
+                }
+                else if (type == MessageType.StreamOutput)
+                {
+                    var chunk = StreamChunkMessage.Deserialize(data);
+                    stdout.Append(chunk.Data);
+                    messageId = chunk.MessageId;
+                }
+                else if (type == MessageType.StreamError)
+                {
+                    var chunk = StreamChunkMessage.Deserialize(data);
+                    stderr.Append(chunk.Data);
+                    messageId = chunk.MessageId;
+                }
+                else if (type == MessageType.StreamEnd)
+                {
+                    var endMsg = StreamEndMessage.Deserialize(data);
+                    return WebSocketResponse.FromResult(
+                        endMsg.ExitCode,
+                        stdout.ToString(),
+                        stderr.ToString(),
+                        endMsg.WorkingDirectory,
+                        endMsg.MessageId
+                    );
+                }
+                else if (type == MessageType.CommandKillResult && data.Length >= 18)
+                {
+                    var killedMessageId = new Guid(data.AsSpan(1, 16));
+                    var success = data[17] == 1;
+
+                    return new WebSocketResponse
+                    {
+                        MessageId = killedMessageId,
+                        ExitCode = success ? -1 : -3
+                    };
+                }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Timeout or cancellation
+        }
 
-        return new WebSocketResponse { MessageId = messageId };
+        return new WebSocketResponse { MessageId = messageId, ExitCode = -2 }; // -2 indicates timeout/aborted in test
+    }
+
+    private static async Task SafeCloseClientAsync(ClientWebSocket client, string reason = "Test complete")
+    {
+        if (client.State != WebSocketState.Open && client.State != WebSocketState.CloseReceived)
+            return;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            await client.CloseAsync(WebSocketCloseStatus.NormalClosure, reason, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore close handshake timeout in tests.
+        }
+        catch (WebSocketException)
+        {
+            // Ignore transport-level closure failures in tests.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Ignore if the client has already been disposed.
+        }
     }
 
     [Fact]
@@ -122,7 +173,7 @@ public class WebSocketIntegrationTests : IDisposable
         {
             if (client.State == WebSocketState.Open)
             {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                await SafeCloseClientAsync(client);
             }
         }
     }
@@ -146,6 +197,7 @@ public class WebSocketIntegrationTests : IDisposable
                 var cmdBytes = Encoding.UTF8.GetBytes(command);
                 var commandStruct = new WebSocketCommand
                 {
+                    Command = command,
                     CommandLength = cmdBytes.Length,
                     CommandBytes = cmdBytes,
                     MessageId = messageId
@@ -171,7 +223,7 @@ public class WebSocketIntegrationTests : IDisposable
             {
                 if (client.State == WebSocketState.Open)
                 {
-                    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                    await SafeCloseClientAsync(client);
                 }
             }
         } */
@@ -215,7 +267,7 @@ public class WebSocketIntegrationTests : IDisposable
             {
                 if (client.State == WebSocketState.Open)
                 {
-                    closeTasks.Add(client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None));
+                    closeTasks.Add(SafeCloseClientAsync(client));
                 }
             }
             await Task.WhenAll(closeTasks);
@@ -245,6 +297,7 @@ public class WebSocketIntegrationTests : IDisposable
                 var cmdBytes = Encoding.UTF8.GetBytes(command);
                 var commandStruct = new WebSocketCommand
                 {
+                    Command = command,
                     CommandLength = cmdBytes.Length,
                     CommandBytes = cmdBytes,
                     MessageId = messageId
@@ -273,7 +326,7 @@ public class WebSocketIntegrationTests : IDisposable
         {
             if (client.State == WebSocketState.Open)
             {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                await SafeCloseClientAsync(client);
             }
         }
     }
@@ -311,7 +364,7 @@ public class WebSocketIntegrationTests : IDisposable
         {
             if (client.State == WebSocketState.Open)
             {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                await SafeCloseClientAsync(client);
             }
         }
     }
@@ -344,7 +397,7 @@ public class WebSocketIntegrationTests : IDisposable
             // Act - Disconnect
             if (client.State == WebSocketState.Open)
             {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                await SafeCloseClientAsync(client);
             }
 
             // Give server time to process disconnection
@@ -374,6 +427,7 @@ public class WebSocketIntegrationTests : IDisposable
             var cmdBytes = Encoding.UTF8.GetBytes(emptyCommand);
             var commandStruct = new WebSocketCommand
             {
+                Command = emptyCommand,
                 CommandLength = cmdBytes.Length,
                 CommandBytes = cmdBytes,
                 MessageId = messageId
@@ -397,7 +451,7 @@ public class WebSocketIntegrationTests : IDisposable
         {
             if (client.State == WebSocketState.Open)
             {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                await SafeCloseClientAsync(client);
             }
         }
     }
@@ -421,6 +475,7 @@ public class WebSocketIntegrationTests : IDisposable
             var cmdBytes = Encoding.UTF8.GetBytes(largeCommand);
             var commandStruct = new WebSocketCommand
             {
+                Command = largeCommand,
                 CommandLength = cmdBytes.Length,
                 CommandBytes = cmdBytes,
                 MessageId = messageId
@@ -445,7 +500,7 @@ public class WebSocketIntegrationTests : IDisposable
         {
             if (client.State == WebSocketState.Open)
             {
-                await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", CancellationToken.None);
+                await SafeCloseClientAsync(client);
             }
         }
     }
@@ -464,23 +519,48 @@ public class WebSocketIntegrationTests : IDisposable
         // Wait for client to detect closure
         try
         {
-            await ReceiveFullMessageBytesAsync(client, CancellationToken.None);
+            using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await ReceiveFullMessageBytesAsync(client, waitCts.Token);
         }
         catch (WebSocketException) { }
-
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (!timeoutCts.Token.IsCancellationRequested &&
-               client.State != WebSocketState.CloseReceived &&
-               client.State != WebSocketState.CloseSent &&
-               client.State != WebSocketState.Closed &&
-               client.State != WebSocketState.Aborted)
-        {
-            await Task.Delay(25, timeoutCts.Token).ContinueWith(_ => { }, CancellationToken.None);
-        }
+        catch (OperationCanceledException) { }
 
         // Assert
         client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.CloseSent || s == WebSocketState.Closed || s == WebSocketState.Aborted);
         _server.ConnectedClientCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CdCommand_ShouldChangeWorkingDirectory()
+    {
+        // Arrange
+        await _server.StartAsync();
+        using var client = new ClientWebSocket();
+        await client.ConnectAsync(new Uri("ws://localhost:8095/"), CancellationToken.None);
+
+        var tempDir = Path.GetTempPath();
+
+        // Act
+        var messageId = Guid.NewGuid();
+        var commandStr = $"cd {tempDir}";
+        var cmdBytes = Encoding.UTF8.GetBytes(commandStr);
+        var commandStruct = new WebSocketCommand
+        {
+            Command = commandStr,
+            CommandLength = cmdBytes.Length,
+            CommandBytes = cmdBytes,
+            MessageId = messageId
+        };
+
+        await client.SendAsync(new ArraySegment<byte>(commandStruct.Serialize()), WebSocketMessageType.Binary, true, CancellationToken.None);
+
+        var response = await ReceiveCompleteResponseAsync(client, CancellationToken.None);
+
+        // Assert
+        response.ExitCode.Should().Be(0);
+        response.WorkingDirectory.TrimEnd(Path.DirectorySeparatorChar).Should().Be(tempDir.TrimEnd(Path.DirectorySeparatorChar));
+
+        await SafeCloseClientAsync(client);
     }
 
     [Fact]
@@ -500,3 +580,4 @@ public class WebSocketIntegrationTests : IDisposable
         response.IsSuccessStatusCode.Should().BeTrue();
     }
 }
+

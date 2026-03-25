@@ -193,16 +193,16 @@ public class ProjectProtocolTests
         writer.WriteByte((byte)MessageType.ProjectAssignSession);
         writer.WriteGuid(messageId);
         writer.WriteGuid(projectId);
-        writer.WriteGuid(sessionId);
         writer.WriteGuid(folderId);
+        writer.WriteGuid(sessionId);
         var data = writer.ToArray();
 
         var request = new ProjectAssignSessionRequest(data);
 
         request.MessageId.Should().Be(messageId);
-        request.SessionId.Should().Be(sessionId);
         request.ProjectId.Should().Be(projectId);
         request.FolderId.Should().Be(folderId);
+        request.SessionId.Should().Be(sessionId);
     }
 
     [Fact]
@@ -247,7 +247,7 @@ public class ProjectProtocolTests
         var request = new WriteUpMoveRequest(data);
 
         request.ProjectId.Should().Be(projectId);
-        request.FolderId.Should().Be(Guid.Empty);
+        request.FolderId.Should().BeNull();
     }
 
     [Fact]
@@ -396,6 +396,7 @@ public class ProjectProtocolTests
     public void ProjectListWriteUpsRequest_ShouldDeserializeCorrectly()
     {
         var messageId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
         var folderId = Guid.NewGuid();
         var offset = 10;
         var limit = 20;
@@ -403,6 +404,7 @@ public class ProjectProtocolTests
         using var writer = new PooledBufferWriter();
         writer.WriteByte((byte)MessageType.ProjectListWriteUps);
         writer.WriteGuid(messageId);
+        writer.WriteGuid(projectId);
         writer.WriteGuid(folderId);
         writer.WriteInt32(offset);
         writer.WriteInt32(limit);
@@ -411,6 +413,7 @@ public class ProjectProtocolTests
         var request = new ProjectListWriteUpsRequest(data);
 
         request.MessageId.Should().Be(messageId);
+        request.ProjectId.Should().Be(projectId);
         request.FolderId.Should().Be(folderId);
         request.Offset.Should().Be(offset);
         request.Limit.Should().Be(limit);
@@ -582,5 +585,36 @@ public class ProjectProtocolTests
         totalCount.Should().Be(2);
         var count = BitConverter.ToInt32(bytes.AsSpan(21, 4));
         count.Should().Be(2);
+    }
+
+    [Fact]
+    public void ProjectListExportsRequest_ShouldDeserializeCorrectly()
+    {
+        var messageId = Guid.NewGuid();
+
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.ProjectListExports);
+        writer.WriteGuid(messageId);
+        var data = writer.ToArray();
+
+        var request = new ProjectListExportsRequest(data);
+
+        request.MessageId.Should().Be(messageId);
+    }
+
+    [Fact]
+    public void SerializeListExportsResult_ShouldSerializeCorrectly()
+    {
+        var messageId = Guid.NewGuid();
+        var exports = new List<ProjectExportMetadata>
+        {
+            new("export1.json", 1024, 1, 2, DateTime.UtcNow, Guid.NewGuid(), true)
+        };
+
+        var bytes = ProjectProtocolSerializer.SerializeListExportsResult(messageId, exports);
+
+        bytes[0].Should().Be((byte)MessageType.ProjectListExportsResult);
+        new Guid(bytes.AsSpan(1, 16)).Should().Be(messageId);
+        BitConverter.ToInt32(bytes.AsSpan(17, 4)).Should().Be(1);
     }
 }

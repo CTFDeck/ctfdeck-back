@@ -48,7 +48,7 @@ public sealed class MediaMessageHandler : MessageHandlerBase
     {
         var request = new MediaLoadRequest(data);
         var media = _mediaService.GetById(request.MediaId);
-        return MediaProtocolSerializer.SerializeLoadResult(request.MessageId, media != null, media);
+        return MediaProtocolSerializer.SerializeLoadResult(request.MessageId, media != null, media?.Id ?? Guid.Empty, media?.Data);
     }
 
     private byte[] HandleDelete(ReadOnlySpan<byte> data)

@@ -102,14 +102,14 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleAssignSession(ReadOnlySpan<byte> data)
     {
         var request = new ProjectAssignSessionRequest(data);
-        var success = _projectService.AssignSession(request.SessionId, request.ProjectId, request.FolderId);
+        var success = _projectService.AssignSession(request.SessionId, request.ProjectId, request.FolderId ?? Guid.Empty);
         return ProjectProtocolSerializer.SerializeAssignSessionResult(request.MessageId, success);
     }
 
     private byte[] HandleWriteUpMove(ReadOnlySpan<byte> data)
     {
         var request = new WriteUpMoveRequest(data);
-        var success = _projectService.MoveWriteUp(request.WriteUpId, request.ProjectId, request.FolderId);
+        var success = _projectService.MoveWriteUp(request.WriteUpId, request.ProjectId, request.FolderId ?? Guid.Empty);
         return ProjectProtocolSerializer.SerializeWriteUpMoveResult(request.MessageId, success);
     }
 
@@ -123,7 +123,7 @@ public sealed class ProjectMessageHandler : MessageHandlerBase
     private byte[] HandleListWriteUps(ReadOnlySpan<byte> data)
     {
         var request = new ProjectListWriteUpsRequest(data);
-        var result = _projectService.ListWriteUps(request.FolderId, request.Offset, request.Limit);
+        var result = _projectService.ListWriteUps(request.FolderId ?? Guid.Empty, request.Offset, request.Limit);
         return ProjectProtocolSerializer.SerializeListWriteUpsResult(request.MessageId, result.Items, result.TotalCount);
     }
 
