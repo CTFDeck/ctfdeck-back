@@ -83,11 +83,16 @@ public sealed class CommandDispatcher
                 (data, isError) => batcher.EnqueueAsync(data, isError).AsTask(),
                 cts.Token,
                 sudoPassword,
-                sw => ctx.ActiveStdinClosers.TryAdd(command.MessageId, () =>
+                sw =>
                 {
-                    try { sw.Close(); }
-                    catch { /* process may have already exited */ }
-                }));
+                    sw.AutoFlush = true;
+                    ctx.ActiveStdinWriters.TryAdd(command.MessageId, sw);
+                    ctx.ActiveStdinClosers.TryAdd(command.MessageId, () =>
+                    {
+                        try { sw.Close(); }
+                        catch { /* process may have already exited */ }
+                    });
+                });
 
             var accumulatedOutput = await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
 
@@ -119,6 +124,31 @@ public sealed class CommandDispatcher
         {
             ctx.ActiveCommands.TryRemove(command.MessageId, out _);
             ctx.ActiveStdinClosers.TryRemove(command.MessageId, out _);
+            ctx.ActiveStdinWriters.TryRemove(command.MessageId, out _);
+        }
+    }
+
+    /// <summary>
+    /// Handle CommandInput message — send raw text to a running command's stdin
+    /// </summary>
+    public async Task HandleInputAsync(ClientContext ctx, Guid commandId, string input)
+    {
+        if (ctx.ActiveStdinWriters.TryGetValue(commandId, out var writer))
+        {
+            try
+            {
+                await writer.WriteAsync(input);
+                await writer.FlushAsync();
+                Console.WriteLine($"[INPUT] {commandId} → {input.Length} chars");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[INPUT] Error writing to {commandId}: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[INPUT] {commandId} → not found");
         }
     }
 
