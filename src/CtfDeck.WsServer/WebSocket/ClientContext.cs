@@ -42,6 +42,14 @@ public sealed class ClientContext : IDisposable
         }
 
         ActiveStdinClosers.Clear();
+
+        foreach (var close in ActiveStdinClosers.Values)
+        {
+            try { close(); }
+            catch { /* stream already disposed */ }
+        }
+
+        ActiveStdinClosers.Clear();
         try
         {
             if (WebSocket.State != WebSocketState.Closed && WebSocket.State != WebSocketState.Aborted)

@@ -216,6 +216,43 @@ public sealed class CommandDispatcher
     }
 
     /// <summary>
+    /// Handle CommandSignal message — Ctrl+C (Interrupt) or Ctrl+D (Eof). Fire-and-forget.
+    /// </summary>
+    public Task HandleSignalAsync(ClientContext ctx, Guid commandId, CommandSignalKind kind)
+    {
+        switch (kind)
+        {
+            case CommandSignalKind.Interrupt:
+                if (ctx.ActiveCommands.TryGetValue(commandId, out var cts))
+                {
+                    try { cts.Cancel(); }
+                    catch (ObjectDisposedException) { /* already finished */ }
+                    Console.WriteLine($"[SIGNAL] {commandId} → interrupt");
+                }
+                else
+                {
+                    Console.WriteLine($"[SIGNAL] {commandId} → interrupt (not found)");
+                }
+                return Task.CompletedTask;
+
+            case CommandSignalKind.Eof:
+                if (ctx.ActiveStdinClosers.TryGetValue(commandId, out var close))
+                {
+                    close();
+                    Console.WriteLine($"[SIGNAL] {commandId} → eof");
+                }
+                else
+                {
+                    Console.WriteLine($"[SIGNAL] {commandId} → eof (not found)");
+                }
+                return Task.CompletedTask;
+
+            default:
+                return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
     /// Request sudo password from client and wait for response
     /// </summary>
     public async Task<string?> RequestSudoPasswordAsync(ClientContext ctx, Guid messageId, CancellationToken ct)
