@@ -38,7 +38,8 @@ public sealed class TerminalExecutor : IDisposable
         string command,
         OutputReceivedHandler onOutput,
         CancellationToken cancellationToken = default,
-        string? sudoPassword = null)
+        string? sudoPassword = null,
+        Action<StreamWriter>? onStdinReady = null)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
@@ -47,7 +48,7 @@ public sealed class TerminalExecutor : IDisposable
 
         return CommandPreprocessor.IsDirectoryChangeCommand(resolvedCommand)
             ? ExecuteCdAsync(resolvedCommand, onOutput)
-            : ExecuteShellCommandAsync(resolvedCommand, onOutput, cancellationToken, sudoPassword);
+            : ExecuteShellCommandAsync(resolvedCommand, onOutput, cancellationToken, sudoPassword, onStdinReady);
     }
 
     public async Task<CommandResult> ExecuteAsync(
@@ -106,7 +107,8 @@ public sealed class TerminalExecutor : IDisposable
         string command,
         OutputReceivedHandler onOutput,
         CancellationToken cancellationToken,
-        string? sudoPassword)
+        string? sudoPassword,
+        Action<StreamWriter>? onStdinReady)
     {
         try
         {
@@ -129,6 +131,7 @@ public sealed class TerminalExecutor : IDisposable
                     (sudoPassword != null && IsSudo(command))
                         ? (sw => sw.WriteLineAsync(sudoPassword))
                         : null,
+                onStdinReady: onStdinReady,
                 cancellationToken: cancellationToken
             );
         }

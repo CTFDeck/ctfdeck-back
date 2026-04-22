@@ -8,6 +8,7 @@ public sealed class BinaryMessageDispatcher
     private readonly Func<ClientContext, WebSocketCommand, Task> _processCdAsync;
     private readonly Func<ClientContext, WebSocketCommand, Task> _processStreamingAsync;
     private readonly Func<ClientContext, Guid, Task> _handleKillAsync;
+    private readonly Func<ClientContext, Guid, CommandSignalKind, Task> _handleSignalAsync;
     private readonly IReadOnlyList<MessageHandlerBase> _messageHandlers;
     private readonly Action<string> _log;
 
@@ -15,12 +16,14 @@ public sealed class BinaryMessageDispatcher
         Func<ClientContext, WebSocketCommand, Task> processCdAsync,
         Func<ClientContext, WebSocketCommand, Task> processStreamingAsync,
         Func<ClientContext, Guid, Task> handleKillAsync,
+        Func<ClientContext, Guid, CommandSignalKind, Task> handleSignalAsync,
         IReadOnlyList<MessageHandlerBase> messageHandlers,
         Action<string>? log = null)
     {
         _processCdAsync = processCdAsync;
         _processStreamingAsync = processStreamingAsync;
         _handleKillAsync = handleKillAsync;
+        _handleSignalAsync = handleSignalAsync;
         _messageHandlers = messageHandlers;
         _log = log ?? Console.WriteLine;
     }
@@ -54,6 +57,13 @@ public sealed class BinaryMessageDispatcher
                 {
                     var killCommandId = new CommandKillReader(message.Span).CommandId;
                     await _handleKillAsync(ctx, killCommandId);
+                    break;
+                }
+
+            case MessageType.CommandSignal:
+                {
+                    var signalReader = new CommandSignalReader(message.Span);
+                    await _handleSignalAsync(ctx, signalReader.CommandId, signalReader.Kind);
                     break;
                 }
 

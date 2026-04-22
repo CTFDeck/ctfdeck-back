@@ -13,6 +13,7 @@ public sealed class ClientContext : IDisposable
     public WebSocketSender Sender { get; }
     public ConcurrentDictionary<Guid, CancellationTokenSource> ActiveCommands { get; } = new();
     public ConcurrentDictionary<Guid, TaskCompletionSource<string?>> SudoWaiters { get; } = new();
+    public ConcurrentDictionary<Guid, Action> ActiveStdinClosers { get; } = new();
 
     public ClientContext(string clientId, System.Net.WebSockets.WebSocket webSocket)
     {
@@ -31,6 +32,14 @@ public sealed class ClientContext : IDisposable
         }
 
         ActiveCommands.Clear();
+
+        foreach (var close in ActiveStdinClosers.Values)
+        {
+            try { close(); }
+            catch { /* stream already disposed */ }
+        }
+
+        ActiveStdinClosers.Clear();
         try
         {
             if (WebSocket.State != WebSocketState.Closed && WebSocket.State != WebSocketState.Aborted)

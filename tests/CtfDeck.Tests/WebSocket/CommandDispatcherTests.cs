@@ -114,6 +114,54 @@ public sealed class CommandDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleSignalAsync_Interrupt_ShouldCancelActiveCommand()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-signal-int", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+        var commandId = Guid.NewGuid();
+        using var cts = new CancellationTokenSource();
+        ctx.ActiveCommands[commandId] = cts;
+
+        await dispatcher.HandleSignalAsync(ctx, commandId, CommandSignalKind.Interrupt);
+
+        cts.IsCancellationRequested.Should().BeTrue();
+        socket.SentMessages.Should().BeEmpty(); // fire-and-forget, no ack
+    }
+
+    [Fact]
+    public async Task HandleSignalAsync_Eof_ShouldInvokeStdinCloser()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-signal-eof", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+        var commandId = Guid.NewGuid();
+        var closed = false;
+        ctx.ActiveStdinClosers[commandId] = () => closed = true;
+
+        await dispatcher.HandleSignalAsync(ctx, commandId, CommandSignalKind.Eof);
+
+        closed.Should().BeTrue();
+        socket.SentMessages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task HandleSignalAsync_UnknownCommand_ShouldNotThrow()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-signal-missing", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+
+        var act = async () =>
+        {
+            await dispatcher.HandleSignalAsync(ctx, Guid.NewGuid(), CommandSignalKind.Interrupt);
+            await dispatcher.HandleSignalAsync(ctx, Guid.NewGuid(), CommandSignalKind.Eof);
+        };
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
     public async Task ProcessStreamingAsync_SudoWithoutPassword_ShouldEmitKilledStreamEnd()
     {
         var socket = new MockWebSocket();

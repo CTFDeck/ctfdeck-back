@@ -516,14 +516,23 @@ public class WebSocketIntegrationTests : IDisposable
         // Act
         await _server.StopAsync();
 
-        // Wait for client to detect closure
-        try
+        // Drain any buffered server messages (e.g. initial ToolCatalogSnapshot) until the
+        // client observes the close/abort — a single receive is fragile because the first
+        // frame may be the catalog, not the close frame.
+        using var drainCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!drainCts.IsCancellationRequested &&
+               client.State != WebSocketState.CloseReceived &&
+               client.State != WebSocketState.CloseSent &&
+               client.State != WebSocketState.Closed &&
+               client.State != WebSocketState.Aborted)
         {
-            using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            await ReceiveFullMessageBytesAsync(client, waitCts.Token);
+            try
+            {
+                await ReceiveFullMessageBytesAsync(client, drainCts.Token);
+            }
+            catch (WebSocketException) { break; }
+            catch (OperationCanceledException) { break; }
         }
-        catch (WebSocketException) { }
-        catch (OperationCanceledException) { }
 
         // Assert
         client.State.Should().Match(s => s == WebSocketState.CloseReceived || s == WebSocketState.CloseSent || s == WebSocketState.Closed || s == WebSocketState.Aborted);
