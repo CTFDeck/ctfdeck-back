@@ -153,7 +153,7 @@ public sealed class CommandDispatcherTests : IDisposable
         using var ctx = new ClientContext("client-input", socket);
         var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
         var commandId = Guid.NewGuid();
-        
+
         using var ms = new MemoryStream();
         using var sw = new StreamWriter(ms) { AutoFlush = true };
         ctx.ActiveStdinWriters[commandId] = sw;
@@ -173,7 +173,7 @@ public sealed class CommandDispatcherTests : IDisposable
         var socket = new MockWebSocket();
         using var ctx = new ClientContext("client-input-missing", socket);
         var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
-        
+
         var act = async () => await dispatcher.HandleInputAsync(ctx, Guid.NewGuid(), "ignored");
         await act.Should().NotThrowAsync();
     }
