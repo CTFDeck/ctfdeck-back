@@ -31,6 +31,7 @@ public class BinaryMessageDispatcherTests
             },
             (_, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
             []);
 
         var payload = CreateCommandExecute("cd /tmp", Guid.NewGuid());
@@ -59,6 +60,7 @@ public class BinaryMessageDispatcherTests
             },
             (_, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
             []);
 
         var payload = CreateCommandExecute("echo ok", Guid.NewGuid());
@@ -85,6 +87,7 @@ public class BinaryMessageDispatcherTests
                 actualId = id;
                 return Task.CompletedTask;
             },
+            (_, _, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
             []);
 
@@ -119,6 +122,7 @@ public class BinaryMessageDispatcherTests
                 actualKind = k;
                 return Task.CompletedTask;
             },
+            (_, _, _) => Task.CompletedTask,
             []);
 
         using var writer = new PooledBufferWriter();
@@ -130,6 +134,42 @@ public class BinaryMessageDispatcherTests
 
         actualId.Should().Be(expectedId);
         actualKind.Should().Be(kind);
+    }
+    [Fact]
+    public async Task DispatchAsync_CommandInput_ShouldCallInputHandler()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-input", socket);
+
+        var expectedId = Guid.NewGuid();
+        var expectedText = "some text\n";
+        Guid? actualId = null;
+        string? actualText = null;
+
+        var dispatcher = new BinaryMessageDispatcher(
+            (_, _) => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
+            (_, id, text) =>
+            {
+                actualId = id;
+                actualText = text;
+                return Task.CompletedTask;
+            },
+            []);
+
+        var textBytes = System.Text.Encoding.UTF8.GetBytes(expectedText);
+        using var writer = new PooledBufferWriter();
+        writer.WriteByte((byte)MessageType.CommandInput);
+        writer.WriteGuid(expectedId);
+        writer.WriteInt32(textBytes.Length);
+        writer.WriteBytes(textBytes);
+
+        await dispatcher.DispatchAsync(ctx, writer.ToArray(), CancellationToken.None);
+
+        actualId.Should().Be(expectedId);
+        actualText.Should().Be(expectedText);
     }
 
     [Fact]
@@ -143,6 +183,7 @@ public class BinaryMessageDispatcherTests
             (_, _) => Task.CompletedTask,
             (_, _) => Task.CompletedTask,
             (_, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
             []);
 
@@ -171,6 +212,7 @@ public class BinaryMessageDispatcherTests
             (_, _) => Task.CompletedTask,
             (_, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
             []);
 
         using var writer = new PooledBufferWriter();
@@ -197,6 +239,7 @@ public class BinaryMessageDispatcherTests
             (_, _) => Task.CompletedTask,
             (_, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
             [],
             logs.Add);
 
@@ -217,6 +260,7 @@ public class BinaryMessageDispatcherTests
             (_, _) => Task.CompletedTask,
             (_, _) => Task.CompletedTask,
             (_, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
             (_, _, _) => Task.CompletedTask,
             [handler],
             logs.Add);

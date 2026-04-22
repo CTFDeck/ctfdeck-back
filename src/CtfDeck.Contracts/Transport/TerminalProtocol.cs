@@ -200,6 +200,19 @@ public readonly ref struct PasswordProvideReader
     public string GetPassword() => Password;
 }
 
+public readonly ref struct CommandInputReader
+{
+    public readonly Guid MessageId;
+    public readonly string Input;
+
+    public CommandInputReader(ReadOnlySpan<byte> data)
+    {
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Input = reader.ReadString();
+    }
+}
+
 public readonly ref struct TerminalStreamChunk
 {
     public readonly MessageType Type;
