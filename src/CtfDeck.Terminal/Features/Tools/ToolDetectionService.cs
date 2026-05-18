@@ -8,13 +8,16 @@ public class ToolDetectionService : IToolDetector
 {
     private readonly IToolCatalogProvider _toolCatalogProvider;
     private readonly IToolPathResolver _toolPathResolver;
+    private readonly IPlatformInfoProvider _platformInfoProvider;
 
     public ToolDetectionService(
         IToolCatalogProvider toolCatalogProvider,
-        IToolPathResolver toolPathResolver)
+        IToolPathResolver toolPathResolver,
+        IPlatformInfoProvider platformInfoProvider)
     {
         _toolCatalogProvider = toolCatalogProvider;
         _toolPathResolver = toolPathResolver;
+        _platformInfoProvider = platformInfoProvider;
     }
 
     public async Task<IReadOnlyCollection<ToolStatusDto>> DetectAllAsync(CancellationToken cancellationToken = default)
@@ -57,11 +60,12 @@ public class ToolDetectionService : IToolDetector
         }
 
         var installer = ResolveInstaller(tool);
-        var isInstallable = installer is not null;
+        var isInstallable = IsInstallable(installer);
 
         if (installer is not null)
         {
-            var localPath = _toolPathResolver.GetToolExecutablePath(tool.Id, installer.ExecutableName);
+            var exeName = installer.ExecutableName ?? tool.CheckCommand ?? tool.Id;
+            var localPath = _toolPathResolver.GetToolExecutablePath(tool.Id, exeName);
             if (File.Exists(localPath))
             {
                 return new ToolStatusDto
@@ -71,7 +75,7 @@ public class ToolDetectionService : IToolDetector
                     Description = tool.Description,
                     Kind = tool.Kind,
                     IsInstalled = true,
-                    IsInstallable = true,
+                    IsInstallable = isInstallable,
                     InstalledPath = localPath,
                     Version = installer.Version,
                     Reason = null
@@ -108,42 +112,80 @@ public class ToolDetectionService : IToolDetector
             IsInstallable = isInstallable,
             InstalledPath = null,
             Version = installer?.Version,
-            Reason = isInstallable
-                ? "Tool not found locally or in PATH."
-                : $"No installer available for {GetCurrentOs()}/{GetCurrentArch()}."
+            Reason = BuildMissingReason(installer)
         };
     }
 
-    private static ToolInstaller? ResolveInstaller(ToolDefinition tool)
+    private ToolInstaller? ResolveInstaller(ToolDefinition tool)
     {
-        var os = GetCurrentOs();
-        var arch = GetCurrentArch();
+        var os = _platformInfoProvider.GetOs();
+        var arch = _platformInfoProvider.GetArch();
 
-        return tool.Installers.FirstOrDefault(i =>
+        var matches = tool.Installers.Where(i =>
             i.Os.Equals(os, StringComparison.OrdinalIgnoreCase) &&
-            i.Arch.Equals(arch, StringComparison.OrdinalIgnoreCase));
+            i.Arch.Equals(arch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (matches.Count == 0)
+            return null;
+
+        var pmMatch = matches.FirstOrDefault(i =>
+            i.Type.Equals("packageManager", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(i.PackageManager) &&
+            FindExecutableInPath(i.PackageManager) is not null);
+
+        return pmMatch ?? matches.First();
     }
 
-    private static string GetCurrentOs()
+    private bool IsInstallable(ToolInstaller? installer)
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "windows";
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "macos";
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "linux";
-        throw new PlatformNotSupportedException("Unsupported OS.");
+        if (installer is null)
+            return false;
+
+        if (!installer.Type.Equals("packageManager", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(installer.PackageManager))
+            return false;
+
+        return FindExecutableInPath(installer.PackageManager) is not null;
     }
 
-    private static string GetCurrentArch()
+    private string BuildMissingReason(ToolInstaller? installer)
     {
-        return RuntimeInformation.OSArchitecture switch
+        if (installer is null)
+            return $"No installer available for {_platformInfoProvider.GetOs()}/{_platformInfoProvider.GetArch()}.";
+
+        if (installer.Type.Equals("packageManager", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(installer.PackageManager) &&
+            FindExecutableInPath(installer.PackageManager) is null)
         {
-            Architecture.X64 => "x64",
-            Architecture.Arm64 => "arm64",
-            _ => throw new PlatformNotSupportedException($"Unsupported architecture: {RuntimeInformation.OSArchitecture}")
-        };
+            return $"Required package manager '{installer.PackageManager}' is not available in PATH.";
+        }
+
+        return "Tool not found locally or in PATH.";
+    }
+
+    private static void RefreshPathEnvironmentVariable()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        try
+        {
+            var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
+            var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
+            var combinedPath = $"{machinePath}{Path.PathSeparator}{userPath}";
+            Environment.SetEnvironmentVariable("PATH", combinedPath, EnvironmentVariableTarget.Process);
+        }
+        catch
+        {
+            // Ignore registry reading or assignment errors
+        }
     }
 
     private static string? FindExecutableInPath(string executableName)
     {
+        RefreshPathEnvironmentVariable();
         var path = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrWhiteSpace(path))
             return null;

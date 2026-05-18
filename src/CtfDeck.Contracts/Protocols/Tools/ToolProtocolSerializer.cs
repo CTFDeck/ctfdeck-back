@@ -11,6 +11,9 @@ public static class ToolProtocolSerializer
     public static byte[] SerializeInstallAccepted(Guid messageId, bool success)
         => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.ToolInstallAccepted, messageId, success);
 
+    public static byte[] SerializeUninstallAccepted(Guid messageId, bool success)
+        => BinaryProtocolSerializer.SerializeSimpleResult(MessageType.ToolUninstallAccepted, messageId, success);
+
     public static byte[] SerializeInstallProgress(Guid messageId, ToolInstallProgressDto progress)
     {
         using var writer = new PooledBufferWriter();

@@ -162,7 +162,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
     {
         var catalog = new FakeCatalogProvider([]);
         var resolver = new TempPathResolver(_tempRoot);
-        var sut = new ToolDetectionService(catalog, resolver);
+        var sut = new ToolDetectionService(catalog, resolver, new PlatformInfoProvider());
 
         var status = await sut.DetectAsync("missing");
 
@@ -173,7 +173,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
     public async Task DetectAsync_ExternalWebApp_ShouldBeNotInstallable()
     {
         var tool = ToolTestHelpers.MakeExternalTool("search");
-        var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), new TempPathResolver(_tempRoot));
+        var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), new TempPathResolver(_tempRoot), new PlatformInfoProvider());
 
         var status = await sut.DetectAsync(tool.Id);
 
@@ -191,7 +191,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
         {
             Os = os,
             Arch = arch,
-            Type = "download",
+            Type = "archive",
             Url = "http://localhost",
             ArchiveType = "none",
             ExecutableRelativePath = "tool",
@@ -203,7 +203,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
         Directory.CreateDirectory(resolver.GetToolsBinDirectory());
         File.WriteAllText(resolver.GetToolExecutablePath(tool.Id, "tool"), "x");
 
-        var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), resolver);
+        var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), resolver, new PlatformInfoProvider());
         var status = await sut.DetectAsync(tool.Id);
 
         status.Should().NotBeNull();
@@ -228,7 +228,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
         {
             Os = os,
             Arch = arch,
-            Type = "download",
+            Type = "archive",
             Url = "http://localhost",
             ArchiveType = "none",
             ExecutableRelativePath = "path-tool",
@@ -241,7 +241,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
         Environment.SetEnvironmentVariable("PATH", tempPathDir + Path.PathSeparator + previous);
         try
         {
-            var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), new TempPathResolver(_tempRoot));
+            var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), new TempPathResolver(_tempRoot), new PlatformInfoProvider());
             var status = await sut.DetectAsync(tool.Id);
 
             status.Should().NotBeNull();
@@ -259,7 +259,7 @@ public sealed class ToolDetectionServiceTests : IDisposable
     public async Task DetectAsync_NotInstallable_ShouldExplainReason()
     {
         var tool = ToolTestHelpers.MakeBinaryTool("uninstallable", []);
-        var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), new TempPathResolver(_tempRoot));
+        var sut = new ToolDetectionService(new FakeCatalogProvider([tool]), new TempPathResolver(_tempRoot), new PlatformInfoProvider());
 
         var status = await sut.DetectAsync(tool.Id);
 
@@ -356,7 +356,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
     public async Task InstallAsync_NoInstallerForPlatform_ShouldEmitFailedState()
     {
         var resolver = new TempPathResolver(_tempRoot);
-        var sut = new ToolInstallationService(resolver, new ArchiveExtractor());
+        var sut = new ToolInstallationService(resolver, new ArchiveExtractor(), new PlatformInfoProvider());
         var tool = ToolTestHelpers.MakeBinaryTool("no-installer", []);
 
         var progress = new List<ToolInstallProgressDto>();
@@ -382,7 +382,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
         {
             Os = os,
             Arch = arch,
-            Type = "download",
+            Type = "archive",
             Url = server.Url,
             ArchiveType = "none",
             ExecutableRelativePath = exeName,
@@ -390,7 +390,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
             Sha256 = "DEADBEEF"
         }]);
 
-        var sut = new ToolInstallationService(new TempPathResolver(_tempRoot), new ArchiveExtractor());
+        var sut = new ToolInstallationService(new TempPathResolver(_tempRoot), new ArchiveExtractor(), new PlatformInfoProvider());
         var progress = new List<ToolInstallProgressDto>();
         await sut.InstallAsync(tool, p =>
         {
@@ -418,7 +418,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
         {
             Os = os,
             Arch = arch,
-            Type = "download",
+            Type = "archive",
             Url = server.Url,
             ArchiveType = "zip",
             ExecutableRelativePath = relativePath,
@@ -428,7 +428,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
         tool.CheckArguments = OperatingSystem.IsWindows() ? "/?" : "";
 
         var resolver = new TempPathResolver(_tempRoot);
-        var sut = new ToolInstallationService(resolver, new ArchiveExtractor());
+        var sut = new ToolInstallationService(resolver, new ArchiveExtractor(), new PlatformInfoProvider());
         var progress = new List<ToolInstallProgressDto>();
 
         await sut.InstallAsync(tool, p =>
@@ -454,7 +454,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
         {
             Os = os,
             Arch = arch,
-            Type = "download",
+            Type = "archive",
             Url = server.Url,
             ArchiveType = "none",
             ExecutableRelativePath = exeName,
@@ -463,7 +463,7 @@ public sealed class ToolInstallationServiceTests : IDisposable
         tool.CheckArguments = "";
 
         var progress = new List<ToolInstallProgressDto>();
-        var sut = new ToolInstallationService(new TempPathResolver(_tempRoot), new ArchiveExtractor());
+        var sut = new ToolInstallationService(new TempPathResolver(_tempRoot), new ArchiveExtractor(), new PlatformInfoProvider());
         await sut.InstallAsync(tool, p =>
         {
             progress.Add(p);
@@ -517,7 +517,7 @@ internal sealed class RecordingInstaller : IToolInstaller
 {
     public List<ToolDefinition> Calls { get; } = [];
 
-    public Task InstallAsync(ToolDefinition tool, Func<ToolInstallProgressDto, Task> progressCallback, CancellationToken cancellationToken = default)
+    public Task InstallAsync(ToolDefinition tool, Func<ToolInstallProgressDto, Task> progressCallback, Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null, CancellationToken cancellationToken = default)
     {
         Calls.Add(tool);
         return Task.CompletedTask;

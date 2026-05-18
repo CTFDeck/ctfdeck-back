@@ -125,11 +125,13 @@ public enum MessageType : byte
     // Tool requests
     ToolInventoryRequest = 120,
     ToolInstallRequest = 121,
+    ToolUninstallRequest = 122,
 
     // Tool responses
     ToolInventoryResult = 130,
     ToolInstallAccepted = 131,
     ToolInstallProgress = 132,
+    ToolUninstallAccepted = 133,
     ToolOperationError = 139,
     ToolCatalogSnapshot = 140
 }

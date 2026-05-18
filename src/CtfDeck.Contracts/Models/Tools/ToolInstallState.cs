@@ -8,5 +8,6 @@ public enum ToolInstallState
     Installing = 3,
     Verifying = 4,
     Success = 5,
-    Failed = 6
+    Failed = 6,
+    Uninstalling = 7
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 
@@ -24,6 +25,45 @@ public class ArchiveExtractor
                 await using (var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress))
                 {
                     TarFile.ExtractToDirectory(gzipStream, destinationDirectory, overwriteFiles: true);
+                }
+                break;
+
+            case "7z":
+                if (OperatingSystem.IsWindows())
+                {
+                    using var process = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "tar",
+                        Arguments = $"-xf \"{archivePath}\" -C \"{destinationDirectory}\"",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    });
+                    if (process is not null)
+                    {
+                        await process.WaitForExitAsync(cancellationToken);
+                        if (process.ExitCode != 0)
+                        {
+                            throw new InvalidOperationException($"Tar extraction of .7z failed with exit code {process.ExitCode}");
+                        }
+                    }
+                }
+                else
+                {
+                    using var process = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "7z",
+                        Arguments = $"x \"{archivePath}\" -o\"{destinationDirectory}\" -y",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    });
+                    if (process is not null)
+                    {
+                        await process.WaitForExitAsync(cancellationToken);
+                        if (process.ExitCode != 0)
+                        {
+                            throw new InvalidOperationException($"7z extraction failed with exit code {process.ExitCode}");
+                        }
+                    }
                 }
                 break;
 

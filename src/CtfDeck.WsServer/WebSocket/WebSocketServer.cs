@@ -77,9 +77,10 @@ public class WebSocketServer : IServerHost
 
         IToolCatalogProvider toolCatalogProvider = new ToolCatalogService();
         IToolPathResolver toolPathResolver = new ToolPathResolver();
-        IToolDetector toolDetector = new ToolDetectionService(toolCatalogProvider, toolPathResolver);
+        IPlatformInfoProvider platformInfoProvider = new PlatformInfoProvider();
+        IToolDetector toolDetector = new ToolDetectionService(toolCatalogProvider, toolPathResolver, platformInfoProvider);
         var archiveExtractor = new ArchiveExtractor();
-        IToolInstaller toolInstaller = new ToolInstallationService(toolPathResolver, archiveExtractor);
+        IToolInstaller toolInstaller = new ToolInstallationService(toolPathResolver, archiveExtractor, platformInfoProvider);
         IToolInstallationCoordinator toolInstallationCoordinator =
             new ToolInstallationCoordinator(toolCatalogProvider, toolDetector, toolInstaller);
         _toolCatalogSnapshotService = new ToolCatalogSnapshotService(toolCatalogProvider, toolDetector);
@@ -108,7 +109,7 @@ public class WebSocketServer : IServerHost
             new WriteUpMessageHandler(writeUpService),
             new MediaMessageHandler(mediaService),
             new ProjectMessageHandler(projectService),
-            new ToolMessageHandler(toolInstallationCoordinator)
+            new ToolMessageHandler(toolInstallationCoordinator, RequestToolSecretAsync)
         ];
 
         _binaryMessageDispatcher = new BinaryMessageDispatcher(
@@ -136,6 +137,36 @@ public class WebSocketServer : IServerHost
             ShellType.PowerShell => ShellKind.Pwsh,
             _ => ShellKind.Any
         };
+    }
+
+    private async Task<string?> RequestToolSecretAsync(string clientId, string prompt, CancellationToken ct)
+    {
+        if (!_clients.TryGetValue(clientId, out var ctx))
+            return null;
+
+        var askId = Guid.NewGuid();
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.SudoWaiters[askId] = tcs;
+
+        try
+        {
+            var req = TerminalProtocolSerializer.SerializePasswordRequest(askId, prompt);
+            await ctx.Sender.SendAsync(req);
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, linked.Token));
+
+            return tcs.Task.IsCompleted ? tcs.Task.Result : null;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            ctx.SudoWaiters.TryRemove(askId, out _);
+        }
     }
 
     public async Task StartAsync()
