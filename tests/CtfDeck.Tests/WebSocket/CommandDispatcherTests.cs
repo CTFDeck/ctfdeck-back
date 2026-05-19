@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using System.Text;
 using CtfDeck.Contracts.Models.Sessions;
 using CtfDeck.Contracts.Transport;
 using CtfDeck.Data.Db;
@@ -111,6 +112,86 @@ public sealed class CommandDispatcherTests : IDisposable
         socket.SentMessages.Should().ContainSingle();
         socket.SentMessages[0].Data[0].Should().Be((byte)MessageType.CommandKillResult);
         socket.SentMessages[0].Data[^1].Should().Be(0);
+    }
+
+    [Fact]
+    public async Task HandleSignalAsync_Interrupt_ShouldCancelActiveCommand()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-signal-int", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+        var commandId = Guid.NewGuid();
+        using var cts = new CancellationTokenSource();
+        ctx.ActiveCommands[commandId] = cts;
+
+        await dispatcher.HandleSignalAsync(ctx, commandId, CommandSignalKind.Interrupt);
+
+        cts.IsCancellationRequested.Should().BeTrue();
+        socket.SentMessages.Should().BeEmpty(); // fire-and-forget, no ack
+    }
+
+    [Fact]
+    public async Task HandleSignalAsync_Eof_ShouldInvokeStdinCloser()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-signal-eof", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+        var commandId = Guid.NewGuid();
+        var closed = false;
+        ctx.ActiveStdinClosers[commandId] = () => closed = true;
+
+        await dispatcher.HandleSignalAsync(ctx, commandId, CommandSignalKind.Eof);
+
+        closed.Should().BeTrue();
+        socket.SentMessages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task HandleInputAsync_WhenWriterExists_ShouldWriteText()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-input", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+        var commandId = Guid.NewGuid();
+
+        using var ms = new MemoryStream();
+        using var sw = new StreamWriter(ms) { AutoFlush = true };
+        ctx.ActiveStdinWriters[commandId] = sw;
+
+        await dispatcher.HandleInputAsync(ctx, commandId, "hello world\n");
+
+        // ms.Position should be at the end, let's reset to read
+        ms.Position = 0;
+        using var sr = new StreamReader(ms);
+        var written = await sr.ReadToEndAsync();
+        written.Should().Be("hello world\n");
+    }
+
+    [Fact]
+    public async Task HandleInputAsync_WhenWriterMissing_ShouldNotThrow()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-input-missing", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+
+        var act = async () => await dispatcher.HandleInputAsync(ctx, Guid.NewGuid(), "ignored");
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task HandleSignalAsync_UnknownCommand_ShouldNotThrow()
+    {
+        var socket = new MockWebSocket();
+        using var ctx = new ClientContext("client-signal-missing", socket);
+        var dispatcher = new CommandDispatcher(_activeSessions, CancellationToken.None);
+
+        var act = async () =>
+        {
+            await dispatcher.HandleSignalAsync(ctx, Guid.NewGuid(), CommandSignalKind.Interrupt);
+            await dispatcher.HandleSignalAsync(ctx, Guid.NewGuid(), CommandSignalKind.Eof);
+        };
+
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]

@@ -116,6 +116,8 @@ public class WebSocketServer : IServerHost
             _commandDispatcher.ProcessCdAsync,
             _commandDispatcher.ProcessStreamingAsync,
             _commandDispatcher.HandleKillAsync,
+            _commandDispatcher.HandleSignalAsync,
+            _commandDispatcher.HandleInputAsync,
             _messageHandlers,
             Console.WriteLine);
     }

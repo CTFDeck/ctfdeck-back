@@ -82,7 +82,17 @@ public sealed class CommandDispatcher
                 resolvedCommand,
                 (data, isError) => batcher.EnqueueAsync(data, isError).AsTask(),
                 cts.Token,
-                sudoPassword);
+                sudoPassword,
+                sw =>
+                {
+                    sw.AutoFlush = true;
+                    ctx.ActiveStdinWriters.TryAdd(command.MessageId, sw);
+                    ctx.ActiveStdinClosers.TryAdd(command.MessageId, () =>
+                    {
+                        try { sw.Close(); }
+                        catch { /* process may have already exited */ }
+                    });
+                });
 
             var accumulatedOutput = await batcher.CompleteAsync(streamResult.ExitCode, executor.CurrentDirectory);
 
@@ -113,6 +123,32 @@ public sealed class CommandDispatcher
         finally
         {
             ctx.ActiveCommands.TryRemove(command.MessageId, out _);
+            ctx.ActiveStdinClosers.TryRemove(command.MessageId, out _);
+            ctx.ActiveStdinWriters.TryRemove(command.MessageId, out _);
+        }
+    }
+
+    /// <summary>
+    /// Handle CommandInput message — send raw text to a running command's stdin
+    /// </summary>
+    public async Task HandleInputAsync(ClientContext ctx, Guid commandId, string input)
+    {
+        if (ctx.ActiveStdinWriters.TryGetValue(commandId, out var writer))
+        {
+            try
+            {
+                await writer.WriteAsync(input);
+                await writer.FlushAsync();
+                Console.WriteLine($"[INPUT] {commandId} → {input.Length} chars");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[INPUT] Error writing to {commandId}: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[INPUT] {commandId} → not found");
         }
     }
 
@@ -140,6 +176,43 @@ public sealed class CommandDispatcher
 
         var killResult = TerminalProtocolSerializer.SerializeCommandKillResult(commandId, success);
         await ctx.Sender.SendAsync(killResult);
+    }
+
+    /// <summary>
+    /// Handle CommandSignal message — Ctrl+C (Interrupt) or Ctrl+D (Eof). Fire-and-forget.
+    /// </summary>
+    public Task HandleSignalAsync(ClientContext ctx, Guid commandId, CommandSignalKind kind)
+    {
+        switch (kind)
+        {
+            case CommandSignalKind.Interrupt:
+                if (ctx.ActiveCommands.TryGetValue(commandId, out var cts))
+                {
+                    try { cts.Cancel(); }
+                    catch (ObjectDisposedException) { /* already finished */ }
+                    Console.WriteLine($"[SIGNAL] {commandId} → interrupt");
+                }
+                else
+                {
+                    Console.WriteLine($"[SIGNAL] {commandId} → interrupt (not found)");
+                }
+                return Task.CompletedTask;
+
+            case CommandSignalKind.Eof:
+                if (ctx.ActiveStdinClosers.TryGetValue(commandId, out var close))
+                {
+                    close();
+                    Console.WriteLine($"[SIGNAL] {commandId} → eof");
+                }
+                else
+                {
+                    Console.WriteLine($"[SIGNAL] {commandId} → eof (not found)");
+                }
+                return Task.CompletedTask;
+
+            default:
+                return Task.CompletedTask;
+        }
     }
 
     /// <summary>

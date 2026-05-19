@@ -15,6 +15,8 @@ public enum MessageType : byte
     CommandExecute = 6,
     PasswordRequest = 7,    // Server -> Client
     PasswordProvide = 8,    // Client -> Server
+    CommandSignal = 9,      // Client -> Server (Ctrl+C / Ctrl+D, fire-and-forget)
+    CommandInput = 150,     // Client -> Server (Raw stdin text)
 
     // Session requests (client → server)
     SessionCreate = 10,

@@ -321,4 +321,28 @@ public class BinaryProtocolTests
         binaryData.Length.Should().BeGreaterThan(0);
         binaryData[0].Should().Be((byte)MessageType.StreamEnd);
     }
+
+    [Theory]
+    [InlineData(CommandSignalKind.Interrupt)]
+    [InlineData(CommandSignalKind.Eof)]
+    public void CommandSignalReader_ShouldParseWireFormat(CommandSignalKind kind)
+    {
+        // Arrange: [1B type=9][16B commandId][1B signalKind] — total 18 bytes
+        var commandId = Guid.NewGuid();
+
+        using var writer = new PooledBufferWriter(18);
+        writer.WriteByte((byte)MessageType.CommandSignal);
+        writer.WriteGuid(commandId);
+        writer.WriteByte((byte)kind);
+        var payload = writer.ToArray();
+
+        // Act
+        var reader = new CommandSignalReader(payload);
+
+        // Assert
+        payload.Length.Should().Be(18);
+        payload[0].Should().Be((byte)MessageType.CommandSignal);
+        reader.CommandId.Should().Be(commandId);
+        reader.Kind.Should().Be(kind);
+    }
 }
