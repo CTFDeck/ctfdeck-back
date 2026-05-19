@@ -34,6 +34,15 @@ public class ToolMessageHandlerTests
                 });
             }
         }
+
+        public Task UninstallAsync(
+            IReadOnlyCollection<string> toolIds,
+            Func<ToolInstallProgressDto, Task> progressCallback,
+            Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     private readonly FakeToolInstallationCoordinator _fakeCoordinator;

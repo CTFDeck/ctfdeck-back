@@ -135,7 +135,7 @@ public sealed class ArchiveExtractorTests : IDisposable
     public async Task ExtractAsync_Unsupported_ShouldThrow()
     {
         var sut = new ArchiveExtractor();
-        var action = () => sut.ExtractAsync("ignored.bin", Path.Combine(_tempRoot, "bad"), "7z");
+        var action = () => sut.ExtractAsync("ignored.bin", Path.Combine(_tempRoot, "bad"), "rar");
 
         await action.Should().ThrowAsync<NotSupportedException>();
     }
@@ -520,6 +520,11 @@ internal sealed class RecordingInstaller : IToolInstaller
     public Task InstallAsync(ToolDefinition tool, Func<ToolInstallProgressDto, Task> progressCallback, Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null, CancellationToken cancellationToken = default)
     {
         Calls.Add(tool);
+        return Task.CompletedTask;
+    }
+
+    public Task UninstallAsync(ToolDefinition tool, Func<ToolInstallProgressDto, Task> progressCallback, Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null, CancellationToken cancellationToken = default)
+    {
         return Task.CompletedTask;
     }
 }

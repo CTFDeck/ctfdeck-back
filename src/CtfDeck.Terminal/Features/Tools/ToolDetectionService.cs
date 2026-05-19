@@ -174,7 +174,26 @@ public class ToolDetectionService : IToolDetector
         {
             var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
             var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
-            var combinedPath = $"{machinePath}{Path.PathSeparator}{userPath}";
+            var processPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process) ?? "";
+
+            var separators = new[] { Path.PathSeparator };
+            var allPaths = new List<string>();
+
+            var processDirs = processPath.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+            var machineDirs = machinePath.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+            var userDirs = userPath.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var dir in processDirs.Concat(machineDirs).Concat(userDirs))
+            {
+                var trimmed = dir.Trim();
+                if (!string.IsNullOrEmpty(trimmed) && seen.Add(trimmed))
+                {
+                    allPaths.Add(trimmed);
+                }
+            }
+
+            var combinedPath = string.Join(Path.PathSeparator, allPaths);
             Environment.SetEnvironmentVariable("PATH", combinedPath, EnvironmentVariableTarget.Process);
         }
         catch
