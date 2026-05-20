@@ -16,9 +16,10 @@ public static class ProcessRunner
         Func<string, bool, Task> onOutput,
         Func<StreamWriter, Task>? writeStdin = null,
         Action<StreamWriter>? onStdinReady = null,
+        bool usePseudoTerminal = false,
         CancellationToken cancellationToken = default)
     {
-        using var process = CreateProcess(shell, command, workingDirectory);
+        using var process = CreateProcess(shell, command, workingDirectory, usePseudoTerminal);
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -121,14 +122,14 @@ public static class ProcessRunner
         }
     }
 
-    private static Process CreateProcess(ShellConfig shell, string command, string workingDirectory)
+    private static Process CreateProcess(
+        ShellConfig shell,
+        string command,
+        string workingDirectory,
+        bool usePseudoTerminal)
     {
-        var escapedCommand = command.Replace("\"", "\\\"");
-
         var startInfo = new ProcessStartInfo
         {
-            FileName = shell.Executable,
-            Arguments = $"{shell.ArgumentPrefix} \"{escapedCommand}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = true,
@@ -137,9 +138,75 @@ public static class ProcessRunner
             WorkingDirectory = workingDirectory
         };
 
+        if (ShouldUsePseudoTerminal(usePseudoTerminal))
+        {
+            ConfigurePseudoTerminalProcess(startInfo, shell, command);
+        }
+        else
+        {
+            startInfo.FileName = shell.Executable;
+            startInfo.ArgumentList.Add(shell.ArgumentPrefix);
+            startInfo.ArgumentList.Add(command);
+        }
+
         ConfigureEnvironment(startInfo);
 
         return new Process { StartInfo = startInfo };
+    }
+
+    private static bool ShouldUsePseudoTerminal(bool requested)
+    {
+        return (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            && IsExecutableOnPath("script")
+            && requested;
+    }
+
+    private static void ConfigurePseudoTerminalProcess(
+        ProcessStartInfo startInfo,
+        ShellConfig shell,
+        string command)
+    {
+        startInfo.FileName = "script";
+
+        if (OperatingSystem.IsMacOS())
+        {
+            startInfo.ArgumentList.Add("-q");
+            startInfo.ArgumentList.Add("/dev/null");
+            startInfo.ArgumentList.Add(shell.Executable);
+            startInfo.ArgumentList.Add(shell.ArgumentPrefix);
+            startInfo.ArgumentList.Add(command);
+            return;
+        }
+
+        startInfo.ArgumentList.Add("-q");
+        startInfo.ArgumentList.Add("-f");
+        startInfo.ArgumentList.Add("-e");
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add($"{shell.Executable} {shell.ArgumentPrefix} {QuotePosix(command)}");
+        startInfo.ArgumentList.Add("/dev/null");
+    }
+
+    private static bool IsExecutableOnPath(string executable)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = Path.Combine(directory, executable);
+
+            if (File.Exists(candidate))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string QuotePosix(string value)
+    {
+        return $"'{value.Replace("'", "'\"'\"'")}'";
     }
 
     private static string GetToolsBinDirectory()

@@ -118,6 +118,7 @@ public sealed class TerminalExecutor : IDisposable
                 (sudoPassword != null && IsSudo(command))
                     ? PrepareSudo(command)
                     : command;
+            var usePseudoTerminal = sudoPassword != null && IsSudo(command);
 
             var preparedCommand =
                 CommandPreprocessor.Prepare(finalCmd, CurrentShell);
@@ -132,6 +133,7 @@ public sealed class TerminalExecutor : IDisposable
                         ? (sw => sw.WriteLineAsync(sudoPassword))
                         : null,
                 onStdinReady: onStdinReady,
+                usePseudoTerminal: usePseudoTerminal,
                 cancellationToken: cancellationToken
             );
         }

@@ -65,24 +65,23 @@ public sealed class BinaryMessageDispatcher
 
             case MessageType.CommandSignal:
                 {
-                    var signalReader = new CommandSignalReader(message.Span);
-                    await _handleSignalAsync(ctx, signalReader.CommandId, signalReader.Kind);
+                    var (commandId, kind) = ParseCommandSignal(message.Span);
+                    await _handleSignalAsync(ctx, commandId, kind);
                     break;
                 }
 
             case MessageType.CommandInput:
                 {
-                    var inputReader = new CommandInputReader(message.Span);
-                    await _handleInputAsync(ctx, inputReader.MessageId, inputReader.Input);
+                    var (messageId, input) = ParseCommandInput(message.Span);
+                    await _handleInputAsync(ctx, messageId, input);
                     break;
                 }
 
             case MessageType.PasswordProvide:
                 {
-                    var reader = new PasswordProvideReader(message.Span);
-                    var password = reader.PasswordLength == 0 ? null : reader.GetPassword();
+                    var (messageId, password) = ParsePasswordProvide(message.Span);
 
-                    if (ctx.SudoWaiters.TryRemove(reader.MessageId, out var waiter))
+                    if (ctx.SudoWaiters.TryRemove(messageId, out var waiter))
                     {
                         waiter.TrySetResult(password);
                     }
@@ -115,5 +114,24 @@ public sealed class BinaryMessageDispatcher
                     break;
                 }
         }
+    }
+
+    private static (Guid CommandId, CommandSignalKind Kind) ParseCommandSignal(ReadOnlySpan<byte> span)
+    {
+        var signalReader = new CommandSignalReader(span);
+        return (signalReader.CommandId, signalReader.Kind);
+    }
+
+    private static (Guid MessageId, string Input) ParseCommandInput(ReadOnlySpan<byte> span)
+    {
+        var inputReader = new CommandInputReader(span);
+        return (inputReader.MessageId, inputReader.Input);
+    }
+
+    private static (Guid MessageId, string? Password) ParsePasswordProvide(ReadOnlySpan<byte> span)
+    {
+        var reader = new PasswordProvideReader(span);
+        var password = reader.PasswordLength == 0 ? null : reader.GetPassword();
+        return (reader.MessageId, password);
     }
 }
