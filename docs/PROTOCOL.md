@@ -10,6 +10,9 @@ The CtfDeck WebSocket Binary Protocol is a high-performance binary protocol desi
 - UTF-8 encoded command strings
 - Multi-client support
 - Cross-platform compatibility
+- Streaming terminal output and raw stdin forwarding
+- Sudo password negotiation and command signals
+- Workspace protocols for sessions, targets, scripts, write-ups, media, projects, and tools
 
 ## Connection Handshake
 
@@ -75,6 +78,8 @@ All message types (1-byte prefix):
 | CommandKill | 4 | Client → Server | Cancel a running command |
 | CommandKillResult | 5 | Server → Client | Kill result |
 | CommandExecute | 6 | Client → Server | Execute a terminal command |
+| PasswordRequest | 7 | Server → Client | Ask client for sudo password |
+| PasswordProvide | 8 | Client → Server | Provide sudo password |
 | CommandSignal | 9 | Client → Server | Send Ctrl+C (Interrupt) or Ctrl+D (Eof) to a running command — fire-and-forget |
 | SessionCreate | 10 | Client → Server | Create a new session |
 | SessionSetActive | 11 | Client → Server | Set active session for recording |
@@ -145,15 +150,27 @@ All message types (1-byte prefix):
 | ProjectDeleteFolderResult | 106 | Server → Client | Response to ProjectDeleteFolder |
 | ProjectRenameFolderResult | 107 | Server → Client | Response to ProjectRenameFolder |
 | ProjectAssignSessionResult | 108 | Server → Client | Response to ProjectAssignSession |
-| ProjectOperationError | 109 | Server → Client | Project error response |
 | ProjectListSessions | 110 | Client → Server | List sessions for a project |
-| ProjectListSessionsResult | 111 | Server → Client | Response to ProjectListSessions |
+| ProjectListSessionsResult | 109 | Server → Client | Response to ProjectListSessions |
+| ProjectOperationError | 111 | Server → Client | Project error response |
 | ProjectListWriteUps | 112 | Client → Server | List write-ups for a folder |
 | ProjectListWriteUpsResult | 113 | Server → Client | Response to ProjectListWriteUps |
 | ProjectExport | 114 | Client → Server | Export project to JSON file |
 | ProjectExportResult | 115 | Server → Client | Response to ProjectExport |
 | ProjectImport | 116 | Client → Server | Import project from JSON file |
 | ProjectImportResult | 117 | Server → Client | Response to ProjectImport |
+| ProjectListExports | 118 | Client → Server | List export files available on server |
+| ProjectListExportsResult | 119 | Server → Client | Response to ProjectListExports |
+| ToolInventoryRequest | 120 | Client → Server | Request installed/missing tool inventory |
+| ToolInstallRequest | 121 | Client → Server | Install one or more tools |
+| ToolUninstallRequest | 122 | Client → Server | Uninstall one or more tools |
+| ToolInventoryResult | 130 | Server → Client | Tool inventory response |
+| ToolInstallAccepted | 131 | Server → Client | Install request accepted/rejected |
+| ToolInstallProgress | 132 | Server → Client | Tool install/uninstall progress event |
+| ToolUninstallAccepted | 133 | Server → Client | Uninstall request accepted/rejected |
+| ToolOperationError | 139 | Server → Client | Tool operation error |
+| ToolCatalogSnapshot | 140 | Server → Client | Full tool catalog snapshot |
+| CommandInput | 150 | Client → Server | Raw stdin text for a running command |
 
 ## Error Codes
 
@@ -401,6 +418,26 @@ The server supports executing multiple commands concurrently. When a client send
 - Session and CommandKill messages are processed inline in the message loop
 - `WebSocket.SendAsync` calls are serialized per-client via a `SemaphoreSlim` (not thread-safe natively)
 
+### Streaming Command Lifecycle
+
+Typical lifecycle for a streaming command:
+
+```
+Client                                      Server
+  |                                           |
+  |-- CommandExecute (6, id, command) ------> |
+  |                                           | start process
+  |<-- StreamOutput/StreamError (1/2, id) ---|
+  |<-- StreamOutput/StreamError (1/2, id) ---|
+  |                                           |
+  |-- CommandInput (150, id, "y\n") --------> | optional stdin
+  |-- CommandSignal (9, id, Interrupt/Eof) -> | optional signal
+  |                                           |
+  |<-- StreamEnd (3, id, exitCode, cwd) ------|
+```
+
+`CompleteResponse` is still used for sequential commands that are handled immediately, such as `cd`. Long-running commands use `StreamOutput`/`StreamError`/`StreamEnd`.
+
 ### CommandKill
 
 Allows the client to cancel a running command by its `messageId`.
@@ -429,6 +466,26 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 - If the command has already finished, `success` will be `0`
 - On client disconnect, all active commands for that client are automatically cancelled
 
+### CommandInput
+
+Sends raw text to a running command's stdin. This is used for interactive prompts after the command is already running, for example answering `y\n` to a confirmation prompt.
+
+#### CommandInput (client → server)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (150)
+1      | 16   | bytes[16] | Command ID / message ID (UUID)
+17     | 4    | int32     | Input length (N)
+21     | N    | bytes[]   | Raw input text (UTF-8)
+```
+
+**Total Size:** 21 + N bytes
+
+**Notes:**
+- The client is responsible for including newline characters when the target program expects Enter, e.g. `y\n`.
+- If the command ID is not active, the input is dropped and logged server-side.
+- stdin remains open until the process exits or the client sends `CommandSignal` with `Eof`.
+
 ### CommandSignal
 
 Allows the client to send soft terminal signals to a running command — Ctrl+C (interrupt) or Ctrl+D (EOF on stdin). Fire-and-forget: no ack is sent; the effect is observed via the command's normal output/`StreamEnd`.
@@ -451,6 +508,34 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 - No response message is sent. If the `commandId` does not match an active command, the signal is silently dropped (logged server-side).
 - For a command to be interruptible/eof-able, it must be an active streaming command tracked in the client context.
 - Process stdin remains open for the full lifetime of every streaming command so that Eof has meaning at any time.
+
+### PasswordRequest / PasswordProvide
+
+Used when the server needs a sudo password before starting a privileged command or tool install/uninstall operation. The server sends a password prompt to the client and waits for a matching `PasswordProvide` with the same message ID.
+
+#### PasswordRequest (server → client)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (7)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Prompt length (P)
+21     | P    | bytes[]   | Prompt text (UTF-8)
+```
+
+#### PasswordProvide (client → server)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (8)
+1      | 16   | bytes[16] | Message ID from PasswordRequest (UUID)
+17     | 4    | int32     | Password length (P)
+21     | P    | bytes[]   | Password text (UTF-8)
+```
+
+**Notes:**
+- The server applies a timeout while waiting for the password.
+- Empty or missing passwords cancel the privileged operation.
+- Passwords are transported over the existing WebSocket connection. The server is intended for local/trusted use; expose it only behind appropriate transport/security controls.
+- On Unix, commands that require a TTY may be executed through a pseudo-terminal wrapper when available.
 
 ---
 
@@ -1370,15 +1455,17 @@ The Project Management Protocol extends the base protocol to support organizing 
 | ProjectDeleteFolderResult | 106 | Server → Client | Response to ProjectDeleteFolder |
 | ProjectRenameFolderResult | 107 | Server → Client | Response to ProjectRenameFolder |
 | ProjectAssignSessionResult | 108 | Server → Client | Response to ProjectAssignSession |
-| ProjectOperationError | 109 | Server → Client | Error response |
 | ProjectListSessions | 110 | Client → Server | List sessions for a project |
-| ProjectListSessionsResult | 111 | Server → Client | Response to ProjectListSessions |
+| ProjectListSessionsResult | 109 | Server → Client | Response to ProjectListSessions |
+| ProjectOperationError | 111 | Server → Client | Error response |
 | ProjectListWriteUps | 112 | Client → Server | List write-ups for a folder |
 | ProjectListWriteUpsResult | 113 | Server → Client | Response to ProjectListWriteUps |
 | ProjectExport | 114 | Client → Server | Export project to JSON file |
 | ProjectExportResult | 115 | Server → Client | Response to ProjectExport |
 | ProjectImport | 116 | Client → Server | Import project from JSON file |
 | ProjectImportResult | 117 | Server → Client | Response to ProjectImport |
+| ProjectListExports | 118 | Client → Server | List available export files |
+| ProjectListExportsResult | 119 | Server → Client | Response to ProjectListExports |
 
 ### Request Message Formats
 
@@ -1535,6 +1622,13 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 - All original IDs are preserved. If the project ID already exists in the database, the import is rejected.
 - Collision checks are performed for all entity IDs (project, sessions, write-ups, media).
 
+#### ProjectListExports
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (118)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
 ### Response Message Formats
 
 #### ProjectCreateResult
@@ -1573,9 +1667,10 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
 0      | 16   | bytes[16] | Folder ID (UUID)
-16     | 4    | int32     | Name length (N)
-20     | N    | bytes[]   | Name (UTF-8)
-20+N   | 1    | byte      | IsSystem (1 = system folder, 0 = user folder)
+16     | 16   | bytes[16] | Parent folder ID (UUID, Guid.Empty = root)
+32     | 4    | int32     | Name length (N)
+36     | N    | bytes[]   | Name (UTF-8)
+36+N   | 1    | byte      | IsSystem (1 = system folder, 0 = user folder)
 ```
 
 #### ProjectListResult
@@ -1653,7 +1748,7 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 #### ProjectListSessionsResult
 ```
 OFFSET | SIZE | TYPE        | DESCRIPTION
-0      | 1    | byte        | Message type (111)
+0      | 1    | byte        | Message type (109)
 1      | 16   | bytes[16]   | Message ID (UUID)
 17     | 4    | int32       | Session count (N)
 21     | ...  | Metadata[]  | SessionMetadata entries (same format as SessionListResult)
@@ -1685,10 +1780,31 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 18     | 16   | bytes[16] | Imported project ID (UUID)
 ```
 
+#### ProjectListExportsResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (119)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Export count (N)
+21     | ...  | Export[]  | Export metadata entries
+```
+
+**Export metadata structure:**
+```
+FIELD | TYPE | DESCRIPTION
+Filename | string | Export file name
+SizeBytes | int64 | File size in bytes
+SessionCount | int32 | Number of sessions in export
+WriteUpCount | int32 | Number of write-ups in export
+ExportedAt | int64 | Unix time in milliseconds
+ProjectId | bytes[16] | Exported project ID
+IsAlreadyImported | byte | 1 if project already exists locally, otherwise 0
+```
+
 #### ProjectOperationError
 ```
 OFFSET | SIZE | TYPE      | DESCRIPTION
-0      | 1    | byte      | Message type (109)
+0      | 1    | byte      | Message type (111)
 1      | 16   | bytes[16] | Message ID (UUID)
 17     | 4    | int32     | Error length (E)
 21     | E    | bytes[]   | Error message (UTF-8)
@@ -1761,6 +1877,14 @@ The export file uses the following JSON structure (version 1):
       "data": "base64-string",
       "createdAt": "datetime"
     }
+  ],
+  "scripts": [
+    {
+      "id": "guid",
+      "name": "string",
+      "category": 0,
+      "template": "string"
+    }
   ]
 }
 ```
@@ -1798,3 +1922,147 @@ Projects are persisted using LiteDB:
 | Unsupported export version | Export file version != 1 | Use a compatible export file |
 | Entity already exists | Session/WriteUp/Media ID collision on import | Entities from previous import still in database |
 | Database locked | Concurrent access | Retry operation |
+
+---
+
+## Tool Protocol
+
+### Overview
+
+The Tool Protocol lets the frontend request the backend tool inventory, install/uninstall tools, receive progress events, and receive catalog snapshots. Tool support is OS-dependent and driven by backend tool definitions.
+
+### Message Types
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| ToolInventoryRequest | 120 | Client → Server | Request current inventory |
+| ToolInstallRequest | 121 | Client → Server | Install one or more tools |
+| ToolUninstallRequest | 122 | Client → Server | Uninstall one or more tools |
+| ToolInventoryResult | 130 | Server → Client | Tool status list |
+| ToolInstallAccepted | 131 | Server → Client | Install request accepted/rejected |
+| ToolInstallProgress | 132 | Server → Client | Progress update |
+| ToolUninstallAccepted | 133 | Server → Client | Uninstall request accepted/rejected |
+| ToolOperationError | 139 | Server → Client | Tool operation error |
+| ToolCatalogSnapshot | 140 | Server → Client | Tool catalog list |
+
+### Request Formats
+
+#### ToolInventoryRequest
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (120)
+1      | 16   | bytes[16] | Message ID (UUID)
+```
+
+#### ToolInstallRequest
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (121)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Tool ID count (N)
+21     | ...  | string[]  | N UTF-8 strings, each encoded as int32 length + bytes
+```
+
+#### ToolUninstallRequest
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (122)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Tool ID count (N)
+21     | ...  | string[]  | N UTF-8 strings, each encoded as int32 length + bytes
+```
+
+### Response Formats
+
+#### ToolInventoryResult
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (130)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Tool count (N)
+21     | ...  | ToolStatus[] | Tool status entries
+```
+
+**ToolStatus structure:**
+```
+FIELD | TYPE   | DESCRIPTION
+Id | string | Tool identifier
+DisplayName | string | Human-readable name
+Description | string | Tool description
+Kind | string | Tool kind, e.g. binary
+IsInstalled | byte | 1 = installed, 0 = missing
+IsInstallable | byte | 1 = backend can install, 0 = detection only
+InstalledPath | string | Resolved path or empty
+Version | string | Detected version or empty
+Reason | string | Detection/installability note or empty
+```
+
+All strings are encoded as `int32 length + UTF-8 bytes`.
+
+#### ToolInstallAccepted / ToolUninstallAccepted
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (131 or 133)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 1    | byte      | Success (1 = accepted, 0 = rejected)
+```
+
+#### ToolInstallProgress
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (132)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | ...  | ToolInstallProgress | Progress payload
+```
+
+**ToolInstallProgress structure:**
+```
+FIELD | TYPE | DESCRIPTION
+ToolId | string | Tool identifier
+State | int32 | Install state enum value
+Message | string | Human-readable progress text
+HasProgressPercent | byte | 1 if progress percent follows, otherwise 0
+ProgressPercent | int32 | Present only if HasProgressPercent = 1; stored as percent * 100
+InstalledPath | string | Installed path or empty
+Error | string | Error text or empty
+```
+
+#### ToolOperationError
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (139)
+1      | 16   | bytes[16] | Message ID (UUID)
+17     | 4    | int32     | Error length (E)
+21     | E    | bytes[]   | Error message (UTF-8)
+```
+
+#### ToolCatalogSnapshot
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (140)
+1      | 4    | int32     | Tool count (N)
+5      | ...  | ToolCatalogItem[] | Catalog entries
+```
+
+**ToolCatalogItem structure:**
+```
+FIELD | TYPE | DESCRIPTION
+Id | string | Tool identifier
+DisplayName | string | Human-readable name
+Category | string | Catalog category
+Kind | string | Tool kind
+Description | string | Tool description
+HasCommandTemplate | byte | 1 if CommandTemplate follows, otherwise 0
+CommandTemplate | string | Present only if HasCommandTemplate = 1
+ExternalUrl | string | Documentation/homepage URL or empty
+IsInstalled | byte | 1 = installed, 0 = missing
+IsInstallable | byte | 1 = backend can install, 0 = detection only
+InstalledPath | string | Resolved path or empty
+Version | string | Detected version or empty
+Reason | string | Detection/installability note or empty
+```
+
+**Notes:**
+- Tool install/uninstall may trigger `PasswordRequest` / `PasswordProvide` if elevated privileges are required.
+- The backend may send a `ToolCatalogSnapshot` without an explicit request, for example after client connection.
+- Inventory and catalog formats intentionally share many fields; inventory is current state, catalog is definition plus state.
