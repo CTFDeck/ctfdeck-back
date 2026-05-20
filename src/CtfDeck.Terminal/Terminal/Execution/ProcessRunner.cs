@@ -133,6 +133,8 @@ public static class ProcessRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             UseShellExecute = false,
             CreateNoWindow = true,
             WorkingDirectory = workingDirectory
@@ -254,6 +256,8 @@ public static class ProcessRunner
         startInfo.Environment["TERM"] = "xterm-256color";
         startInfo.Environment["COLORTERM"] = "truecolor";
         startInfo.Environment["CLICOLOR_FORCE"] = "1";
+        startInfo.Environment["LANG"] = "C.UTF-8";
+        startInfo.Environment["LC_ALL"] = "C.UTF-8";
 
         AddToolsBinToPath(startInfo, GetToolsBinDirectory());
     }
