@@ -9,5 +9,12 @@ public interface IToolInstallationCoordinator
     Task InstallAsync(
         IReadOnlyCollection<string> toolIds,
         Func<ToolInstallProgressDto, Task> progressCallback,
+        Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
+        CancellationToken cancellationToken = default);
+
+    Task UninstallAsync(
+        IReadOnlyCollection<string> toolIds,
+        Func<ToolInstallProgressDto, Task> progressCallback,
+        Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
         CancellationToken cancellationToken = default);
 }

@@ -17,7 +17,11 @@ public class ToolMessageHandlerTests
             return Task.FromResult<IReadOnlyCollection<ToolStatusDto>>(inventory);
         }
 
-        public async Task InstallAsync(IReadOnlyCollection<string> toolIds, Func<ToolInstallProgressDto, Task> onProgress, CancellationToken cancellationToken = default)
+        public async Task InstallAsync(
+            IReadOnlyCollection<string> toolIds,
+            Func<ToolInstallProgressDto, Task> onProgress,
+            Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
+            CancellationToken cancellationToken = default)
         {
             foreach (var tool in toolIds)
             {
@@ -29,6 +33,15 @@ public class ToolMessageHandlerTests
                     Message = "Halfway there"
                 });
             }
+        }
+
+        public Task UninstallAsync(
+            IReadOnlyCollection<string> toolIds,
+            Func<ToolInstallProgressDto, Task> progressCallback,
+            Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
         }
     }
 
