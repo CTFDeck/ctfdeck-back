@@ -164,6 +164,26 @@ public readonly ref struct CommandKillReader
     }
 }
 
+public enum CommandSignalKind : byte
+{
+    Interrupt = 0,
+    Eof = 1
+}
+
+public readonly ref struct CommandSignalReader
+{
+    public readonly Guid CommandId;
+    public readonly CommandSignalKind Kind;
+
+    public CommandSignalReader(ReadOnlySpan<byte> data)
+    {
+        var reader = new BinaryProtocolReader(data);
+        reader.ReadByte(); // type: CommandSignal (9)
+        CommandId = reader.ReadGuid();
+        Kind = (CommandSignalKind)reader.ReadByte();
+    }
+}
+
 public readonly ref struct PasswordProvideReader
 {
     public readonly Guid MessageId;
@@ -178,6 +198,19 @@ public readonly ref struct PasswordProvideReader
     }
 
     public string GetPassword() => Password;
+}
+
+public readonly ref struct CommandInputReader
+{
+    public readonly Guid MessageId;
+    public readonly string Input;
+
+    public CommandInputReader(ReadOnlySpan<byte> data)
+    {
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        Input = reader.ReadString();
+    }
 }
 
 public readonly ref struct TerminalStreamChunk

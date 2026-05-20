@@ -75,6 +75,7 @@ All message types (1-byte prefix):
 | CommandKill | 4 | Client → Server | Cancel a running command |
 | CommandKillResult | 5 | Server → Client | Kill result |
 | CommandExecute | 6 | Client → Server | Execute a terminal command |
+| CommandSignal | 9 | Client → Server | Send Ctrl+C (Interrupt) or Ctrl+D (Eof) to a running command — fire-and-forget |
 | SessionCreate | 10 | Client → Server | Create a new session |
 | SessionSetActive | 11 | Client → Server | Set active session for recording |
 | SessionLoad | 12 | Client → Server | Load full session data |
@@ -427,6 +428,29 @@ OFFSET | SIZE | TYPE      | DESCRIPTION
 - When a command is killed, it sends a `StreamEnd` message with `exitCode = -1` before the `CommandKillResult`
 - If the command has already finished, `success` will be `0`
 - On client disconnect, all active commands for that client are automatically cancelled
+
+### CommandSignal
+
+Allows the client to send soft terminal signals to a running command — Ctrl+C (interrupt) or Ctrl+D (EOF on stdin). Fire-and-forget: no ack is sent; the effect is observed via the command's normal output/`StreamEnd`.
+
+#### CommandSignal (client → server)
+```
+OFFSET | SIZE | TYPE      | DESCRIPTION
+0      | 1    | byte      | Message type (9)
+1      | 16   | bytes[16] | Command ID (UUID of the target running command)
+17     | 1    | byte      | Signal kind (0 = Interrupt / Ctrl+C, 1 = Eof / Ctrl+D)
+```
+
+**Total Size:** 18 bytes
+
+**Signal kinds:**
+- `0` — **Interrupt** (Ctrl+C): cancels the command's `CancellationTokenSource`, resulting in `process.Kill(entireProcessTree: true)` and a `StreamEnd` with `exitCode = -1`. Semantically equivalent to `CommandKill` but mapped to the keyboard event rather than an explicit "Kill" button.
+- `1` — **Eof** (Ctrl+D): closes the target process's stdin, signaling end-of-file. Lets interactive commands that read stdin (`cat`, `wc`, `python -`) exit cleanly with their normal exit code.
+
+**Notes:**
+- No response message is sent. If the `commandId` does not match an active command, the signal is silently dropped (logged server-side).
+- For a command to be interruptible/eof-able, it must be an active streaming command tracked in the client context.
+- Process stdin remains open for the full lifetime of every streaming command so that Eof has meaning at any time.
 
 ---
 

@@ -15,6 +15,7 @@ public static class ProcessRunner
         string workingDirectory,
         Func<string, bool, Task> onOutput,
         Func<StreamWriter, Task>? writeStdin = null,
+        Action<StreamWriter>? onStdinReady = null,
         CancellationToken cancellationToken = default)
     {
         using var process = CreateProcess(shell, command, workingDirectory);
@@ -26,17 +27,20 @@ public static class ProcessRunner
         {
             process.Start();
 
-            // If sudoPassword was provided, write it ASAP to stdin
+            // If sudoPassword was provided, write it ASAP to stdin (kept open for EOF signal)
             if (writeStdin != null)
             {
                 try
                 {
                     await writeStdin(process.StandardInput);
                     await process.StandardInput.FlushAsync();
-                    process.StandardInput.Close();
                 }
                 catch { /* ignore */ }
             }
+
+            // Publish stdin to the caller so it can close it on EOF (Ctrl+D) signal
+            try { onStdinReady?.Invoke(process.StandardInput); }
+            catch { /* ignore */ }
 
             using var timeoutCts = new CancellationTokenSource(DefaultTimeout);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);

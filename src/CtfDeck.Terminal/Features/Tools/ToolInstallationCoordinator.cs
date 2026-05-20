@@ -25,6 +25,7 @@ public class ToolInstallationCoordinator : IToolInstallationCoordinator
     public async Task InstallAsync(
         IReadOnlyCollection<string> toolIds,
         Func<ToolInstallProgressDto, Task> progressCallback,
+        Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
         CancellationToken cancellationToken = default)
     {
         foreach (var toolId in toolIds.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -43,7 +44,33 @@ public class ToolInstallationCoordinator : IToolInstallationCoordinator
                 continue;
             }
 
-            await _toolInstaller.InstallAsync(tool, progressCallback, cancellationToken);
+            await _toolInstaller.InstallAsync(tool, progressCallback, requestSecretAsync, cancellationToken);
+        }
+    }
+
+    public async Task UninstallAsync(
+        IReadOnlyCollection<string> toolIds,
+        Func<ToolInstallProgressDto, Task> progressCallback,
+        Func<string, CancellationToken, Task<string?>>? requestSecretAsync = null,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var toolId in toolIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var tool = await _toolCatalogProvider.GetByIdAsync(toolId, cancellationToken);
+
+            if (tool is null)
+            {
+                await progressCallback(new ToolInstallProgressDto
+                {
+                    ToolId = toolId,
+                    State = ToolInstallState.Failed,
+                    Message = "Unknown tool.",
+                    Error = $"Unknown tool '{toolId}'."
+                });
+                continue;
+            }
+
+            await _toolInstaller.UninstallAsync(tool, progressCallback, requestSecretAsync, cancellationToken);
         }
     }
 }

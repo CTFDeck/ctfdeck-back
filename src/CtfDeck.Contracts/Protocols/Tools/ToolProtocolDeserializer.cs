@@ -27,10 +27,23 @@ public class ToolInstallRequest
     }
 }
 
+public class ToolUninstallRequest
+{
+    public Guid MessageId { get; }
+    public IReadOnlyList<string> ToolIds { get; }
+
+    public ToolUninstallRequest(ReadOnlySpan<byte> data)
+    {
+        var reader = new BinaryProtocolReader(data);
+        (_, MessageId) = reader.ReadHeader();
+        ToolIds = reader.ReadStringList();
+    }
+}
+
 public static class ToolProtocolDeserializer
 {
     public static bool IsToolMessage(MessageType type)
     {
-        return type >= MessageType.ToolInventoryRequest && type <= MessageType.ToolInstallProgress;
+        return type >= MessageType.ToolInventoryRequest && type <= MessageType.ToolCatalogSnapshot;
     }
 }

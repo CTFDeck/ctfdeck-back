@@ -92,13 +92,32 @@ public class ToolCatalogService : IToolCatalogProvider
             {
                 if (string.IsNullOrWhiteSpace(installer.Os) ||
                     string.IsNullOrWhiteSpace(installer.Arch) ||
-                    string.IsNullOrWhiteSpace(installer.Type) ||
-                    string.IsNullOrWhiteSpace(installer.Url) ||
-                    string.IsNullOrWhiteSpace(installer.ArchiveType) ||
-                    string.IsNullOrWhiteSpace(installer.ExecutableRelativePath) ||
-                    string.IsNullOrWhiteSpace(installer.ExecutableName))
+                    string.IsNullOrWhiteSpace(installer.Type))
                 {
                     throw new InvalidOperationException($"Tool '{tool.Id}' contains an invalid installer.");
+                }
+
+                if (installer.Type.Equals("archive", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(installer.Url) ||
+                        string.IsNullOrWhiteSpace(installer.ArchiveType) ||
+                        string.IsNullOrWhiteSpace(installer.ExecutableRelativePath) ||
+                        string.IsNullOrWhiteSpace(installer.ExecutableName))
+                    {
+                        throw new InvalidOperationException($"Tool '{tool.Id}' contains an invalid archive installer.");
+                    }
+                }
+                else if (installer.Type.Equals("packageManager", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(installer.PackageManager) ||
+                        string.IsNullOrWhiteSpace(installer.PackageId))
+                    {
+                        throw new InvalidOperationException($"Tool '{tool.Id}' contains an invalid package manager installer.");
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Tool '{tool.Id}' has unsupported installer type '{installer.Type}'.");
                 }
             }
         }
